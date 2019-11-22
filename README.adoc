@@ -1,0 +1,33 @@
+= Texture Notes 
+
+A lecture notes manager that aims for self-studying and university classes. 
+It is mainly compose of a command line program where you can easily manage your LaTeX notes. 
+
+For now, the notes manager is specifically created for my specific workflow so no there's not much room for general use-cases. 
+
+Also since this is my first project made with https://www.rust-lang.org/[Rust], you'll have to excuse my bad codebase for a little bit. 
+Nonetheless, pull requests for improvements are always welcome! 
+
+
+
+
+== Architecture 
+
+Texture Notes v2 uses Rust for building the core and command line interface. 
+It also use https://sqlite.org/index.html[SQLite] for the database. 
+
+A Texture Notes profile is composed of the profile input, notes, styles, and hook scripts for customizable options. 
+
+
+
+
+== Features 
+
+Here are the features to be implemented whenever possible. 
+
+* Hooks scripts using Rust.  
+* Exclude the new note in the database. 
+
+The note manager also enforces a specific folder structure. 
+
+image::./docs/assets/texture-notes-profile.svg[]
