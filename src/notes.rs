@@ -6,12 +6,12 @@ use std::result::Result;
 use std::rc::Rc;
 use std::io::Write;
 
+use handlebars;
 use rusqlite;
 use rusqlite::types::Value;
 use rusqlite::vtab::array;
 use rusqlite::{ Connection };
 use chrono::{ self, Local };
-use serde_json;
 
 use crate::constants;
 use crate::helpers;
@@ -35,8 +35,8 @@ pub trait Scannable {
 
 #[derive(Clone, Debug)]
 pub struct Subject {
-    id: i64, 
-    name: String, 
+    pub id: i64, 
+    pub name: String, 
     modified_datetime: chrono::DateTime<Local>, 
 }
 
@@ -59,9 +59,9 @@ impl Scannable for Subject {
 
 #[derive(Clone, Debug)]
 pub struct Note {
-    id: i64, 
+    pub id: i64, 
     subject_id: i64, 
-    title: String, 
+    pub title: String, 
     modified_datetime: chrono::DateTime<Local>, 
 }
 
@@ -89,7 +89,8 @@ pub struct Notes {
 }
 
 impl Notes {
-    /// Create a new notes instance of the profile.
+    /// Create a new notes instance of the profile. 
+    /// Since it stores the database connection where operations can occur, it has to be mutable. 
     pub fn new<'a>(path: &'a PathBuf) -> Result<Notes, Box<dyn std_error::Error>> {
         let mut notes_path: PathBuf = path.clone();
         if !notes_path.ends_with(NOTES_FOLDER) {
@@ -145,7 +146,7 @@ impl Notes {
     }
     
     /// Retrieves a list of valid subjects in the database and the filesystem.
-    pub fn read_subjects<'a> (&self, subjects: &Vec<&'a str>, sort: Option<&str>) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
+    pub fn read_subjects(&self, subjects: &Vec<&str>, sort: Option<&str>) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
         let mut subject_select_sql = match sort {
             Some(p) => format!("SELECT id, name, slug, datetime_modified FROM subjects WHERE name IN rarray(?) ORDER BY {}", p), 
             None => String::from("SELECT id, name, slug, datetime_modified FROM subjects WHERE name IN rarray(?)")
@@ -193,9 +194,34 @@ impl Notes {
         Ok(subjects_vector)
     }
 
+    /// Retrieves all of the subjects (mainly from the database). 
+    pub fn read_all_subjects (&self, sort: Option<&str>) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
+        let mut select_str = String::from("SELECT id, name, datetime_modified FROM subjects");
+
+        if let Some(sort_option) = sort {
+            let sql_string = format!(" ORDER by {}", sort_option);
+            select_str.push_str(&sql_string);
+        }
+
+        let mut select_all_subjects_stmt = self.db.prepare(&select_str)?;
+
+        let mut subject_rows = select_all_subjects_stmt.query(rusqlite::NO_PARAMS)?;
+        let mut subjects: Vec<Subject> = vec![];
+
+        while let Some(subject_row) = subject_rows.next()? {
+            let id: i64 = subject_row.get(0)?;
+            let name: String = subject_row.get(1)?;
+            let modified_datetime: chrono::DateTime<Local> = subject_row.get(2)?;
+
+            subjects.push(Subject { id, name, modified_datetime });
+        }
+
+        Ok(subjects)
+    }
+
     /// Deletes the subjects in the database and the filesystem. 
     /// Also returns the deleted subjects. 
-    pub fn delete_subjects<'a> (&self, subjects: &Vec<&'a str>, delete: bool) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
+    pub fn delete_subjects (&self, subjects: &Vec<&str>, delete: bool) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
         let subjects_vector: Vec<Subject> = self.read_subjects(&subjects, None)?;
         let input_names = subjects.clone().into_iter().map(| subject | Value::from(subject.to_string())).collect();
         let pointer = Rc::new(input_names);
@@ -233,18 +259,71 @@ impl Notes {
         Ok(subjects_vector)
     }
 
-    /// Updates the subjects in the database and the filesystem. 
-    /// Returns the updated data of the subjects. 
-    pub fn update_subjects (&self, subjects: HashMap<&str, &str>) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
-        let mut old_subjects: Vec<&str> = vec![];
-        for key in subjects.keys() {
-            old_subjects.push(key);
+    /// Deletes all of the subjects in the database and filesystem. 
+    /// Returns the data of the deleted subjects.
+    pub fn delete_all_subjects (&mut self, delete: bool) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
+        let all_subjects = self.read_all_subjects(None)?;
+        let mut delete_all_subjects_stmt = self.db.execute("DELETE FROM subjects", rusqlite::NO_PARAMS)?;
+        
+        if delete {
+            for subject in all_subjects.iter() {
+                let path = subject.path(self);
+
+                fs::remove_dir_all(&path);
+            }
         }
 
-        let update_subjects_stmt = self.db.prepare("UPDATE name, slug, datetime_modified FROM subjects WHERE name == ?")?;
+        Ok(all_subjects)
+    }
 
-        let subjects_vector: Vec<Subject> = vec![];
-        Ok(subjects_vector)
+    /// Updates the subjects in the database and the filesystem. 
+    /// Returns the updated data of the subjects. 
+    pub fn update_subjects (&self, subjects: &HashMap<&str, &str>) -> Result<Vec<Subject>, Box<dyn std_error::Error>> {
+        let mut old_subjects: Vec<&str> = vec![];
+        for key in subjects.keys() {
+            old_subjects.push(&key);
+        }
+
+        let mut valid_subjects = self.read_subjects(&old_subjects, None)?;
+
+        let mut update_subjects_stmt = self.db.prepare("UPDATE subjects SET name = :new_name, slug = :new_slug, datetime_modified = :new_date WHERE slug = :slug AND name = :name")?;
+        
+        let now: chrono::DateTime<Local> = chrono::Local::now();
+        let now_as_iso_string = now.to_rfc3339();
+
+        let mut updated_subjects: Vec<Subject> = vec![];
+        
+        for subject in valid_subjects.iter() {
+            let new_subject = match subjects.get(subject.name.as_str()) {
+                Some(s) => s.to_string(), 
+                None => continue, 
+            };
+            let slug = helpers::kebab_case(&new_subject);
+            let old_slug = helpers::kebab_case(&subject.name);
+            
+            let updated_row = match update_subjects_stmt.execute_named(&[(":new_name", &new_subject), (":new_slug", &slug), (":new_date", &now_as_iso_string), (":slug", &old_slug), (":name", &subject.name)]) {
+                Ok(changed_row_size) => changed_row_size, 
+                Err(_) => continue, 
+            };
+
+            if updated_row == 0 {
+                continue;
+            }
+
+            let mut subject_instance = Subject { id: subject.id, name: subject.name.to_string(), modified_datetime: now };
+            let mut subject_path: PathBuf = subject_instance.path(self);
+
+            subject_instance.name = new_subject;
+            let mut new_subject_path: PathBuf = subject_instance.path(self);
+            match helpers::move_folder(&subject_path, &new_subject_path, Some(&now_as_iso_string)) {
+                Ok(()) => (), 
+                Err(_) => continue, 
+            };
+
+            updated_subjects.push(subject_instance);
+        }
+
+        Ok(updated_subjects)
     }
 
     pub fn create_notes<'a>(&self, subject: &'a str, notes: &Vec<&'a str>) -> Result<Vec<Note>, Box<dyn std_error::Error>> {
@@ -260,6 +339,8 @@ impl Notes {
         let mut now_as_iso_string: String = now.to_rfc3339();
 
         let mut notes_object: Vec<Note> = vec![];
+        let mut template_registry = handlebars::Handlebars::new();
+        template_registry.register_template_string("tex_note", constants::NOTE_TEMPLATE)?;
 
         for note_title in notes.iter() {
             let subject_slug = helpers::kebab_case(note_title);
@@ -276,7 +357,8 @@ impl Notes {
             // creating the file
             let mut note_path = note_instance.path(self, &subject);
             let mut note_file = fs::OpenOptions::new().create_new(true).write(true).open(note_path)?;
-            note_file.write(constants::NOTE_TEMPLATE.as_bytes())?;
+            let rendered_string = template_registry.render("tex_note", &json!({ "author": "Me", "date": now_as_iso_string, "title": note_instance.title }))?;
+            note_file.write(rendered_string.as_bytes())?;
 
             notes_object.push( note_instance )
         }
@@ -340,7 +422,43 @@ impl Notes {
         Ok(notes_vector)
     }
 
-    pub fn read_all_notes<'a> (&mut self, subject: &str, sort: Option<&'a str>) -> Result<Vec<Note>, Box<dyn std_error::Error>> {
+    pub fn read_all_notes (&mut self, sort: Option<&str>, limit: Option<u64>, reverse: Option<bool>) -> Result<Vec<Note>, Box<dyn std_error::Error>> {
+        let mut select_all_notes_stmt = String::from("SELECT id, subject_id, title, datetime_modified FROM notes");
+        
+        if let Some(order) = sort {
+            select_all_notes_stmt.push_str(" ORDER BY ");
+            select_all_notes_stmt.push_str(order);
+        }
+
+        if let Some(desc) = reverse {
+            if desc {
+                select_all_notes_stmt.push_str(" DESC");
+            }
+        }
+
+        if let Some(limit_count) = limit {
+            select_all_notes_stmt.push_str(" LIMIT ");
+            select_all_notes_stmt.push_str(&limit_count.to_string());
+        }
+
+        let mut select_sql_stmt = self.db.prepare(&select_all_notes_stmt)?;
+        let mut notes_row = select_sql_stmt.query(rusqlite::NO_PARAMS)?;
+
+        let mut notes: Vec<Note> = vec![];
+
+        while let Some(note_row) = notes_row.next()? {
+            let id = note_row.get(0)?;
+            let subject_id = note_row.get(1)?;
+            let title = note_row.get(2)?;
+            let modified_datetime = note_row.get(3)?;
+
+            notes.push(Note { id, subject_id, title, modified_datetime });
+        }
+
+        Ok(notes)
+    }
+
+    pub fn read_all_notes_by_subject<'a> (&mut self, subject: &str, sort: Option<&'a str>) -> Result<Vec<Note>, Box<dyn std_error::Error>> {
         let subjects: Vec<Subject> = self.read_subjects(&vec![subject], sort)?;
         let subject: &Subject = match subjects.len() {
             0 => return Ok(vec![]), 
@@ -418,6 +536,28 @@ impl Notes {
 
         Ok(notes_vector)
     }
+
+    pub fn delete_all_notes_by_subject (&mut self, subject: &str, delete: bool) -> Result<Vec<Note>, Box<dyn std_error::Error>> {
+        let subjects = self.read_subjects(&vec![subject], None)?;
+        let subject: &Subject = match subjects.len() {
+            0 => return Ok(vec![]), 
+            _ => &subjects[0], 
+        };
+
+        let all_subject_notes = self.read_all_notes_by_subject(&subject.name, None)?;
+
+        let delete_all_notes_stmt = self.db.execute("DELETE FROM notes WHERE subject_id == ?", &[subject.id])?;
+
+        if delete {
+            for note in all_subject_notes.iter() {
+                let path = note.path(self, &subject);
+    
+                fs::remove_file(&path);
+            }
+        }
+
+        Ok(all_subject_notes)
+    }
 }
 
 #[cfg(test)]
@@ -428,7 +568,7 @@ mod tests {
     #[test]
     fn basic_note_initialization() -> Result<(), Box<dyn std_error::Error>> {
         let note_path = PathBuf::from("./tests/notes");
-        fs::remove_dir_all(&note_path);
+        fs::remove_dir_all(&note_path)?;
         let mut test_case: Notes = Notes::new(&note_path)?;
 
         let test_input = vec!["Calculus", "Algebra"];
@@ -445,6 +585,10 @@ mod tests {
         let available_subjects: Vec<Subject> = test_case.read_subjects(&test_input, None)?;
         assert_eq!(available_subjects.len(), 2);
 
+        // reading all of the subjects of the note 
+        let all_available_subjects: Vec<Subject> = test_case.read_all_subjects(Some("name"))?;
+        assert_eq!(all_available_subjects.len(), 2);
+
         // reading the notes
         let available_notes: Vec<Note> = test_case.read_notes(test_input[0], &test_note_input, None)?;
         assert_eq!(available_notes.len(), 2);
@@ -452,15 +596,16 @@ mod tests {
         let available_notes_from_id: Vec<Note> = test_case.read_notes_by_id(&vec![1, 2], None)?;
         assert_eq!(available_notes_from_id.len(), 2);
 
+        let all_available_notes: Vec<Note> = test_case.read_all_notes_by_subject(test_input[0], None)?;
+        assert_eq!(all_available_notes.len(), 2);
+
         // deleting the notes
-        let deleted_notes: Vec<Note> = test_case.delete_notes(test_input[0], &test_note_input, true)?;
-        assert_eq!(deleted_notes.len(), 2);
+        // let deleted_notes: Vec<Note> = test_case.delete_notes(&test_input[0], &test_note_input, true)?;
+        // assert_eq!(deleted_notes.len(), 2);
 
         // deleting the subjects 
-        let deleted_subjects: Vec<Subject> = test_case.delete_subjects(&test_input, true)?;
-        assert_eq!(deleted_subjects.len(), 2);
-
-        fs::remove_dir_all(&note_path);
+        // let deleted_subjects: Vec<Subject> = test_case.delete_subjects(&test_input, true)?;
+        // assert_eq!(deleted_subjects.len(), 2);
 
         Ok(())
     }
