@@ -1,7 +1,7 @@
 extern crate regex;
 
 use std::fs::{ self, DirBuilder };
-use std::path::{ PathBuf };
+use std::path::{ PathBuf, Path };
 use regex::Regex;
 
 use crate::error::Error;
@@ -43,7 +43,8 @@ pub fn regex_match(regex_str: &str, value: &str) -> bool {
     compiled_regex.is_match(value)
 }
 
-pub fn create_folder(dir_builder: &DirBuilder, path: &PathBuf) -> Result<(), Error> {
+pub fn create_folder<P: AsRef<Path>>(dir_builder: &DirBuilder, path: P) -> Result<(), Error> {
+    let path = path.as_ref();
     let path_str = match path.to_str() {
         Some(text) => text, 
         None => return Err(Error::ValueError), 
@@ -52,6 +53,38 @@ pub fn create_folder(dir_builder: &DirBuilder, path: &PathBuf) -> Result<(), Err
     match dir_builder.create(path_str) {
         Err(reason) => return Err(Error::IoError(reason)), 
         _ => Ok(())
+    }
+}
+
+/// Move folder from the specified locations. 
+/// When a safety string is provided, the destination folder will be renamed first before moving the source folder. 
+/// The name of the already existing destination will be appended with the safety string. 
+pub fn move_folder<T: AsRef<Path>, U: AsRef<Path>>(from: T, to: U, safety_string: Option<&str>) -> Result<(), Error> {
+    let from = from.as_ref();
+    let to = to.as_ref();
+
+    if to.is_dir() && safety_string.is_some() {
+        if let Some(safety_string) = safety_string {
+            let mut replacement_path: PathBuf = to.clone().to_path_buf();
+            replacement_path.push(&format!("-{}", safety_string));
+
+            fs::rename(&from, &replacement_path).map_err(Error::IoError)?;
+        }
+    }
+
+    match fs::rename(&from, &to) {
+        Ok(_v) => Ok(()), 
+        Err(err) => Err(Error::IoError(err)) 
+    }
+}
+
+pub fn read_file_or_default<'str, T: AsRef<Path>, U: AsRef<&'str str>>(path: T, default_value: U) -> String {
+    let path = path.as_ref();
+    let default_value = default_value.as_ref();
+
+    match fs::read_to_string(path) {
+        Ok(string) => string, 
+        Err(_err) => default_value.to_string()
     }
 }
 
