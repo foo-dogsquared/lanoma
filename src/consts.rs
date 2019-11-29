@@ -1,7 +1,7 @@
 pub const TEXTURE_NOTES_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const TEXTURE_NOTES_DIR_NAME: &str = "texture-notes-profile";
 pub const TEXTURE_NOTES_METADATA_FILENAME: &str = "profile.json";
-pub const TEXTURE_NOTES_STYLES_DIR_NAME: &str = "styles";
+pub const TEXTURE_NOTES_STYLES_DIR_NAME: &str = "common";
 
 pub const SQLITE_SCHEMA: &str = "PRAGMA foreign_key = ON;
 
@@ -58,14 +58,14 @@ CREATE INDEX IF NOT EXISTS notes_index ON notes(title, subject_id);
 pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 12pt]{{standalone}}
 
 % document metadata
-\author{{{author}}}
-\title{{{title}}}
-\date{{{date}}}
+\author{ {{~author~}} }
+\title{ {{~title~}} }
+\date{ {{~date~}} }
 
 \begin{{document}}
 % Frontmatter of the class note
 
-${{{main}}}
+{{~main~}}
 
 \end{{document}}
 ";
@@ -73,9 +73,9 @@ ${{{main}}}
 pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
 
 % document metadata
-\author{ {{author}} }
-\title{ {{title}} }
-\date{ {{date}} }
+\author{ {{~author~}} }
+\title{ {{~title~}} }
+\date{ {{~date~}} }
 
 \begin{document}
 
