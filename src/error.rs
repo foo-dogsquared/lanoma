@@ -3,6 +3,8 @@ use std::fmt;
 use std::io;
 
 use rusqlite;
+use serde_json;
+use handlebars;
 
 // An enum for errors possible to happen in the libtexturenotes
 #[derive(Debug)]
@@ -21,6 +23,11 @@ pub enum Error {
 
     // Error when a part of the profile data is missing
     MissingDataError(String), 
+
+    SerdeValueError(serde_json::Error), 
+
+    HandlebarsTemplateError(handlebars::TemplateError), 
+    HandlebarsRenderError(handlebars::RenderError), 
 }
 
 impl error::Error for Error { }
@@ -33,6 +40,9 @@ impl fmt::Display for Error {
             Error::DatabaseError(ref err) => err.fmt(f), 
             Error::IoError(ref err) => err.fmt(f), 
             Error::MissingDataError(ref p) => write!(f, "{} is missing.", p),
+            Error::SerdeValueError(ref p) => write!(f, "{} is invalid.", p),
+            Error::HandlebarsTemplateError(ref p) => write!(f, "{} is an invalid template.", p),
+            Error::HandlebarsRenderError(ref p) => write!(f, "{}: Error occurred while rendering.", p),
         }
     }
 }
