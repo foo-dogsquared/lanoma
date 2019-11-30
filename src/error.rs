@@ -1,31 +1,45 @@
 use std::error;
 use std::fmt;
 use std::io;
+use std::path;
 
 use rusqlite;
 use serde_json;
 use handlebars;
 
+use crate::notes;
+
 // An enum for errors possible to happen in the libtexturenotes
 #[derive(Debug)]
 pub enum Error {
-    // Erro when the value is invalid 
+    /// Error when the value is invalid in a function. 
     ValueError, 
 
-    // Error when the profile is not valid or does not exists
+    /// Error when the profile is not valid or does not exists
     ProfileInvalidityError, 
 
-    // Error when the database failed to open 
+    /// Used when the shelf has no database while attempting to do some database operations. 
+    NoShelfDatabase(path::PathBuf), 
+
+    /// Used when the shelf is not yet exported while attempting to do some filesystem operations. 
+    UnexportedShelfError(path::PathBuf), 
+
+    /// Used when the associated subject is missing in the shelf (either in the database or the filesystem). 
+    MissingSubjectError(path::PathBuf), 
+
+    /// Related errors to Rusqlite.  
     DatabaseError(rusqlite::Error),
 
-    // Error when the file is missing or nonexistent 
+    // IO-related errors.  
     IoError(io::Error), 
 
-    // Error when a part of the profile data is missing
+    // Error when a part of the profile data is missing.
     MissingDataError(String), 
 
+    // Related errors for Serde.
     SerdeValueError(serde_json::Error), 
 
+    // Related errors for Handlebars.
     HandlebarsTemplateError(handlebars::TemplateError), 
     HandlebarsRenderError(handlebars::RenderError), 
 }
@@ -37,6 +51,9 @@ impl fmt::Display for Error {
         match *self {
             Error::ValueError => write!(f, "Given value is not valid."), 
             Error::ProfileInvalidityError => write!(f, "Profile location is not valid."), 
+            Error::NoShelfDatabase(ref path) => write!(f, "The shelf at path '{}' has no database for the operations.", path.to_str().unwrap()), 
+            Error::UnexportedShelfError(ref path) => write!(f, "The shelf at path '{}' is not yet exported in the filesystem.", path.to_str().unwrap()), 
+            Error::MissingSubjectError(ref path) => write!(f, "The subject at path '{}' is missing", path.to_string_lossy()),
             Error::DatabaseError(ref err) => err.fmt(f), 
             Error::IoError(ref err) => err.fmt(f), 
             Error::MissingDataError(ref p) => write!(f, "{} is missing.", p),
