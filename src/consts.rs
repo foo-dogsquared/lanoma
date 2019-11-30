@@ -1,7 +1,5 @@
 pub const TEXTURE_NOTES_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const TEXTURE_NOTES_DIR_NAME: &str = "texture-notes-profile";
-pub const TEXTURE_NOTES_METADATA_FILENAME: &str = "profile.json";
-pub const TEXTURE_NOTES_STYLES_DIR_NAME: &str = "common";
 
 pub const SQLITE_SCHEMA: &str = "PRAGMA foreign_key = ON;
 
