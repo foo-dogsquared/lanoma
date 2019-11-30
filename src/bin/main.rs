@@ -24,18 +24,55 @@ pub struct TextureNotes {
 }
 
 #[derive(Debug, StructOpt)]
+pub enum Input {
+    Subjects {
+        #[structopt(help = "Add a list of subjects.", min_values = 1)]
+        subjects: Vec<String>, 
+    }, 
+
+    Notes {
+        #[structopt(min_values = 2, value_names = &["subject", "notes"], multiple = true, 
+        help = "A list of notes for a particular subject. Requires the subject as the first item in the list.")]
+        notes: Vec<String>,  
+    }
+}
+
+#[derive(Debug, StructOpt)]
+pub enum FullInput {
+    Subjects {
+        #[structopt(help = "Add a list of subjects.", min_values = 1)]
+        subjects: Vec<String>, 
+    }, 
+
+    Notes {
+        #[structopt(min_values = 2, value_names = &["subject", "note"], multiple = true, 
+        help = "A list of notes for a particular subject. Requires the subject as the first item in the list.")]
+        notes: Vec<String>,  
+    },
+
+    SubjectIds {
+        #[structopt(help = "A list of IDs", min_values = 1)]
+        subject_ids: Vec<i64>, 
+    }, 
+
+    NoteIds {
+        #[structopt(help = "A list of notes IDs", min_values = 1)]
+        note_ids: Vec<i64>, 
+    }
+}
+
+#[derive(Debug, StructOpt)]
 pub enum Command {
+    #[structopt(about = "Initialize a profile.")]
+    Init, 
+
     #[structopt(about = "Add multiple subjects and notes in the database.")]
     Add {
         #[structopt(short, long, help = "Force to replace the resulting files in the filesystem.")]
         force: bool, 
 
-        #[structopt(short, long, min_values = 2, value_names = &["subject", "note"], multiple = true, 
-        help = "Add a list of notes for a particular subject. Requires the subject as the first item in the list.")]
-        notes: Vec<String>, 
-
-        #[structopt(short, long, help = "Add a list of subjects to be added.", min_values = 1)]
-        subjects: Vec<String>, 
+        #[structopt(subcommand)]
+        kind: Input, 
     },
 
     #[structopt(about = "Remove multiple subjects and notes in the database.")]
@@ -43,17 +80,8 @@ pub enum Command {
         #[structopt(short, long, help = "Remove the associated files in the filesystem.")]
         delete: bool, 
 
-        #[structopt(short, long, min_values = 2, value_names = &["subject", "notes"], help = "Remove all of the notes of the listed subjects.")]
-        notes: Vec<String>, 
-        
-        #[structopt(short, long, min_values = 1, help = "Remove the subjects in the database.")]
-        subjects: Vec<String>, 
-
-        #[structopt(short = "S", long, min_values = 1, help = "Remove the subjects quickly through its ID in the database.")]
-        subjects_id: Vec<i64>, 
-
-        #[structopt(short = "N", long, min_values = 1, help = "Remove the notes quickly through specifying the ID in the database.")]
-        notes_id: Vec<i64>, 
+        #[structopt(subcommand)]
+        kind: FullInput, 
     },
 
     #[structopt(about = "Lists the subjects and its notes from the database.")]
@@ -67,17 +95,11 @@ pub enum Command {
         #[structopt(short, long, help = "Indicates if the build directory should be kept in instead of being deleted.")]
         cache: bool, 
 
-        #[structopt(short, long, min_values = 1, value_name = "subject", help = "Compile all of the notes of the listed subjects.")]
-        notes: Vec<String>, 
-
         #[structopt(short, long, min_values = 1, value_name = "subject", help = "Compile the main note of the listed subjects.")]
         main: Vec<String>, 
 
-        #[structopt(help = "The ID of the notes to be compiled.")]
-        notes_id: Vec<i64>, 
-
-        #[structopt(help = "The ID of the subjects to be compiled.")]
-        subjects_id: Vec<i64>, 
+        #[structopt(subcommand)]
+        kind: FullInput
     },
 
     #[structopt(about = "Open a note.")]
@@ -100,29 +122,24 @@ fn main() {
 
     let mut profile = match texture_notes_v2::Profile::open(&path) {
         Ok(p) => p, 
-        Err(_) => match texture_notes_v2::Profile::new(&path) {
+        Err(_) => match texture_notes_v2::Profile::init(&path, true) {
             Ok(p) => p, 
             Err(_) => process::exit(1), 
         }
     };
 
     match args.cmd {
-        Command::Add { notes, subjects, force } => {
-            let subjects = subjects.iter().map(| name | name.as_str()).collect();
-
-            match profile.add_entries(&subjects, &vec![], true) {
-                Ok(()) => (), 
-                Err(_) => process::exit(1), 
-            };
+        Command::Add { kind, force } => {
+            println!("{:?}", kind);
         },
-        Command::Remove { subjects_id, subjects, notes_id, notes, delete } => {
-            println!("{:?} {:?} {:?} {}", subjects_id, subjects, notes, delete);
+        Command::Remove { kind, delete } => {
+            println!("{:?} {}", kind, delete);
         },
         Command::List { sort } => {
             profile.list_entries(None);
         }, 
-        Command::Compile { subjects_id, notes_id, main, notes, cache } => {
-            println!("{:?} {:?} {:?} {}", subjects_id, main, notes, cache);
+        Command::Compile { kind, main, cache } => {
+            println!("{:?} {:?} {}", kind, main, cache);
         }, 
         Command::Open { id, execute } => {
             println!("{} {:?}", id, execute);
