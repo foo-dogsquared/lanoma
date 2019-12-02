@@ -45,7 +45,7 @@ pub enum FullInput {
     }, 
 
     Notes {
-        #[structopt(min_values = 2, value_names = &["subject", "note"], multiple = true, 
+        #[structopt(min_values = 2, value_names = &["subject", "notes"], multiple = true, 
         help = "A list of notes for a particular subject. Requires the subject as the first item in the list.")]
         notes: Vec<String>,  
     },
@@ -122,7 +122,7 @@ fn main() {
 
     let mut profile = match texture_notes_v2::Profile::open(&path) {
         Ok(p) => p, 
-        Err(_) => match texture_notes_v2::Profile::init(&path, true) {
+        Err(_) => match texture_notes_v2::Profile::new(&path, None, true) {
             Ok(p) => p, 
             Err(_) => process::exit(1), 
         }
