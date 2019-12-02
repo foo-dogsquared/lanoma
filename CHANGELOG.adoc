@@ -1,0 +1,53 @@
+= Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on https://keepachangelog.com/en/1.0.0/[Keep a Changelog],
+and this project adheres to https://semver.org/spec/v2.0.0.html[Semantic Versioning].
+
+
+
+== Unreleased 
+
+
+=== Added 
+
+* Add support for template files instead of storing in the configuration file. 
+Custom templates are now possible by separating them in a dedicated folder. 
+For the sake of performance, it can only have support for top-level files. 
+Folder-based templates similar to https://github.com/gohugoio/hugo/[Hugo] archetypes is considered but it is tentative. 
+
+* Add an `init` command which really does nothing but it is useful for creating nonexistent profiles. 
+It's a feature, not an accident implementation, I swear. 
+
+
+=== Changed 
+
+* Rewrite the application with the https://www.rust-lang.org/[Rust] language. 
+
+* Restructure the application with its own library crate. 
+Making it possible to create other binaries with the same application logic. 
+
+* Change the structure of the commands by assigning unit subcommands. 
+It is no longer possible to make multiple types and multiple input (e.g., `--notes SUBJECT_1 NOTE_1 --subject SUBJECT_2 SUBJECT_3`) with a single command. 
+This is due to the limitations of https://github.com/clap-rs/clap[`clap`]. 
+(I think it's not that large of a compromise anyway.) 
+
+* Revise the binder system. 
+From this point, the binder is now referred to as the **shelf**. 
+** Make the shelf system modular for easier maintenance. 
+** A shelf is still composed of **subjects** (terminology may change in the future). 
+Though, with this system, it now compromises the ease of search for the notes. 
+** Change the dynamics of the shelf database to be more optional. 
+In the previous version, the database is an absolute must in order for the program to work. 
+Now, it accepts the paths as the main input. 
+The database is mainly for adding convenience such as referring to the subjects and notes by ID instead of its full path. 
+
+// * Symlinks are dynamically generated at compilation time instead of statically created at creation time. 
+// This makes the data truly cross-compatible across multiple systems (as long as symlinks as supported, of course). 
+
+* Templates support from https://docs.python.org/3/library/string.html#custom-string-formatting[Python template strings] to https://github.com/sunng87/handlebars-rust[Handlebars Rust implementation]. 
+
+* Restructure the profile directory structure for neater custom configurations. 
+** The styles folder have been changed to common files repository which makes more sense. 
+** The profile metadata filename has been changed to `profile.json`. 
+** Templates has been moved to its own folder at `templates/`. 
