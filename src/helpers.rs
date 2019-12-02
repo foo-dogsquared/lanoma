@@ -1,8 +1,5 @@
-extern crate regex;
-
 pub mod string {
     use regex::Regex;
-    use crate::error::Error;
     
     pub fn kebab_case(string: &str) -> String {
         // Saving memory by compiling the regexes only once throughout the program 
@@ -127,7 +124,7 @@ mod tests {
     fn basic_regex_match() {
         {
             let test_case = String::from(r"^\w+$");
-            let result = regex_match(&test_case.to_string(), "browing");
+            let result = string::regex_match(&test_case.to_string(), "browing");
 
             assert_eq!(result, true);
         }
