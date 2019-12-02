@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 use std::fs::{ self, DirBuilder, OpenOptions };
-use std::path::{ self, PathBuf, Path };
+use std::path::{ self, PathBuf };
 use std::result::Result;
-use std::io::Write;
+use std::io::{ self, Write };
 
-use handlebars;
 use chrono::{ self };
 use serde::{ Deserialize, Serialize };
 use serde_json;
 
-use crate::consts;
 use crate::helpers;
 use crate::error::Error;
 use crate::shelf::Shelf;
@@ -22,7 +20,6 @@ const SUBJECT_METADATA_FILE: &str = "info.json";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Subject {
     name: String, 
-    datetime_modified: chrono::DateTime<chrono::Local>, 
 
     #[serde(flatten)]
     extra: HashMap<String, serde_json::Value>, 
@@ -33,7 +30,6 @@ impl Subject {
     pub fn new (name: String) -> Self {
         Subject {
             name, 
-            datetime_modified: chrono::Local::now(), 
             extra: HashMap::new()
         }
     }
@@ -92,9 +88,17 @@ impl Subject {
         self.name.clone()
     }
 
-    /// Returns the modification datetime as a `chrono::DateTime` instance. 
-    pub fn datetime_modified (&self) -> chrono::DateTime<chrono::Local> {
-        self.datetime_modified.clone()
+    /// Returns the modification datetime of the folder as a `chrono::DateTime` instance. 
+    pub fn datetime_modified (&self, notes: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
+        match self.is_path_exists(&notes) {
+            true => {
+                let metadata = fs::metadata(self.path(&notes)).map_err(Error::IoError)?;
+                let modification_systemtime = metadata.modified().map_err(Error::IoError)?;
+
+                Ok(chrono::DateTime::<chrono::Local>::from(modification_systemtime))
+            }, 
+            false => Err(Error::IoError(io::Error::from(io::ErrorKind::Other))) 
+        }
     }
 
     /// Returns the associated path with the given shelf.
@@ -112,11 +116,6 @@ impl Subject {
         path.push(SUBJECT_METADATA_FILE);
 
         path
-    }
-
-    /// Creates a string of the datetime as an ISO string (or equivalent to "%F" in `strftime`). 
-    pub fn date_iso_string (&self) -> String {
-        self.datetime_modified.format("%F").to_string()
     }
 
     /// Exports the instance in the filesystem. 
@@ -145,10 +144,13 @@ impl Subject {
     }
 
     /// Checks if the associated path exists from the shelf. 
-    pub fn is_valid (&self, notes: &Shelf) -> bool {
-        let path = self.metadata_path(&notes);
+    pub fn is_path_exists (&self, notes: &Shelf) -> bool {
+        self.path(&notes).exists()
+    }
 
-        path.is_file()
+    /// Checks if the subject has a valid folder structure from the shelf. 
+    pub fn is_valid (&self, notes: &Shelf) -> bool {
+        self.metadata_path(&notes).is_file()
     }
     
     /// Checks if the subject instance has an entry in the shelf database. 
@@ -180,15 +182,13 @@ impl Subject {
 #[derive(Clone, Debug)]
 pub struct Note {
     title: String, 
-    datetime_modified: chrono::DateTime<chrono::Local>, 
 }
 
 impl Note {
     /// Creates a new note instance. 
-    pub fn new(title: String, datetime: Option<chrono::DateTime<chrono::Local>>) -> Self {
+    pub fn new(title: String) -> Self {
         Note {
             title, 
-            datetime_modified: datetime.unwrap_or(chrono::Local::now()), 
         }
     }
 
@@ -197,7 +197,7 @@ impl Note {
     /// This only checks whether the associated path of the note exists. 
     /// To check if the note exists on the notes database, call the `Note::is_entry_exists` method. 
     pub fn from (title: &str, subject: &Subject, notes: &Shelf) -> Result<Option<Self>, Error> {
-        let note = Note::new(title.to_string(), None);
+        let note = Note::new(title.to_string());
 
         match note.is_path_exists(&subject, &notes) {
             true => Ok(Some(note)), 
@@ -228,7 +228,7 @@ impl Note {
             let title = title.as_ref();
             let note_instance = match Note::from(title, &subject, &notes)? {
                 Some(v) => v, 
-                None => Note::new(title.to_string(), None), 
+                None => Note::new(title.to_string()), 
             };
 
             notes_vector.push(note_instance);
@@ -242,9 +242,17 @@ impl Note {
         self.title.clone()
     }
 
-    /// Returns the modification datetime as a `chrono::DateTime` instance.
-    pub fn datetime_modified (&self) -> chrono::DateTime<chrono::Local> {
-        self.datetime_modified.clone()
+    /// Returns the modification datetime of the note file in the shelf filesystem as a `chrono::DateTime` instance.
+    pub fn datetime_modified (&self, subject: &Subject, shelf: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
+        match self.is_path_exists(&subject, &shelf) {
+            true => {
+                let metadata = fs::metadata(self.path(&subject, &shelf)).map_err(Error::IoError)?;
+                let modification_time = metadata.modified().map_err(Error::IoError)?;
+
+                Ok(chrono::DateTime::<chrono::Local>::from(modification_time))
+            }, 
+            false => Err(Error::IoError(io::Error::from(io::ErrorKind::NotFound)))
+        }
     } 
 
     /// Returns the file name of the note instance along with its associated subject. 
@@ -265,24 +273,19 @@ impl Note {
     /// 
     /// For templating, it uses [a Rust implementation of Handlebars](https://github.com/sunng87/handlebars-rust). 
     /// The configuration of Handlebars does not escape anything (uses [`handlebars::no_escape`](https://docs.rs/handlebars/3.0.0-beta.1/handlebars/fn.no_escape.html)). 
-    pub fn export (&self, subject: &Subject, notes: &Shelf, value: &serde_json::Map<String, serde_json::Value>) -> Result<(), Error> {
+    pub fn export (
+        &self, 
+        subject: &Subject, 
+        notes: &Shelf, 
+        template: &str, 
+    ) -> Result<(), Error> {
         if !notes.is_exported() {
             return Err(Error::UnexportedShelfError(notes.path()));
         }
         
         let path = self.path(&subject, &notes);
-
-        let mut value = value.clone();
-        value.insert("title".to_string(), json!(self.title));
-        value.insert("date".to_string(), json!(self.datetime_modified.format("%F").to_string()));
-
         let mut note_file = OpenOptions::new().create_new(true).write(true).open(path).map_err(Error::IoError)?;
-
-        let mut template_registry = handlebars::Handlebars::new();
-        template_registry.register_escape_fn(handlebars::no_escape);
-        template_registry.register_template_string("tex_note", consts::NOTE_TEMPLATE).map_err(Error::HandlebarsTemplateError)?;
-        let rendered_string = template_registry.render("tex_note", &value).map_err(Error::HandlebarsRenderError)?;
-        note_file.write(rendered_string.as_bytes()).map_err(Error::IoError)?;
+        note_file.write(template.as_bytes()).map_err(Error::IoError)?;
 
         Ok(())
     }
