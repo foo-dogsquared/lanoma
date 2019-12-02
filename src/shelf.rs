@@ -1,10 +1,6 @@
-use std::collections::HashMap;
-use std::fs::{ self, DirBuilder, OpenOptions };
+use std::fs::{ self, DirBuilder };
 use std::path::{ self, PathBuf, Path };
-use std::result::Result;
-use std::io::Write;
 
-use handlebars;
 use rusqlite;
 use rusqlite::vtab::array;
 use rusqlite::{ Connection };
@@ -18,9 +14,7 @@ use crate::notes::{ Note, Subject };
 
 // even though string literals are always static, 
 // it is better to anotate them for explicit intentions
-const NOTES_FOLDER: &str = "notes";
-const DB_NAME: &str = "notes";
-const DB_FILE_EXTENSION: &str = "db";
+const DB_NAME: &str = "notes.db";
 
 /// The shelf is where it contains the subjects and its notes. 
 /// 
@@ -32,27 +26,19 @@ pub struct Shelf {
 }
 
 impl Shelf {
-    /// Create a new shelf instance in memory. 
+    /// Create a new shelf instance and immediately being created in the filesystem. 
     /// 
     /// If you want to import a shelf instance from the filesystem, use `Shelf::from`. 
-    /// 
-    /// Note that an empty directory is basically considered as exported. 
-    /// It has to be a nonexistent directory. 
     pub fn new (path: PathBuf, use_database: bool) -> Result<Self, Error> {
         let mut notes_object = Shelf { path: path.clone(), db: None };
 
-        if notes_object.is_exported() {
-            return Err(Error::ValueError);
+        if !notes_object.is_exported() {
+            let dir_builder = DirBuilder::new();
+            helpers::filesystem::create_folder(&dir_builder, notes_object.path())?;
         }
 
         if use_database {
-            notes_object.db = Some({
-                let db = rusqlite::Connection::open_in_memory().map_err(Error::DatabaseError)?;
-                array::load_module(&db).map_err(Error::DatabaseError)?;
-                db.execute_batch(consts::SQLITE_SCHEMA).map_err(Error::DatabaseError)?;
-
-                db
-            });
+            notes_object.set_db()?;
         }
 
         Ok(notes_object)
@@ -98,9 +84,7 @@ impl Shelf {
     /// Returns the associated path of the database. 
     pub fn db_path (&self) -> PathBuf {
         let mut db_path: PathBuf = self.path.clone();
-        db_path.push(NOTES_FOLDER);
-        db_path.set_file_name(DB_NAME);
-        db_path.set_extension(DB_FILE_EXTENSION);
+        db_path.push(DB_NAME);
 
         db_path
     }
@@ -135,48 +119,6 @@ impl Shelf {
     /// Checks if the shelf is exported in the filesystem.
     pub fn is_exported (&self) -> bool {
         self.path.exists()
-    }
-
-    /// Export the shelf in the filesystem. 
-    /// 
-    /// If the new shelf instance has a database, it will also export the subjects and notes from it.  
-    /// 
-    /// This method can only be used if the path of the shelf does not exist. 
-    /// Though take note that it will only export if the parent directory does exist. 
-    pub fn export (&mut self, value: &serde_json::Map<String, serde_json::Value>) -> Result<(), Error> {
-        if self.is_exported() {
-            return Err(Error::ValueError);
-        }
-
-        // create the folder of the shelf
-        let dir_builder = DirBuilder::new();
-        helpers::filesystem::create_folder(&dir_builder, &self.path)?;
-
-        // export the subjects and notes in the filesystem 
-        let subjects: Vec<Subject> = self.get_all_subjects_from_db(None)?;
-
-        for subject in subjects.iter() {
-            subject.export(&self)?;
-
-            let notes: Vec<Note> = self.get_all_notes_by_subject_from_db(&subject, None)?;
-
-            for note in notes.iter() {
-                note.export(&subject, &self, &value)?;
-            }
-        }
-
-        // create the database file
-        let db_path = self.db_path();
-        match self.db.as_mut() {
-            Some(conn) => {
-                conn.backup(rusqlite::DatabaseName::Main, db_path, None).map_err(Error::DatabaseError)?;
-
-                self.set_db()?;
-            }, 
-            None => (), 
-        }
-
-        Ok(())
     }
 
     /// Gets the associated subject ID in the database. 
@@ -247,7 +189,7 @@ impl Shelf {
                 let name = row.get(0).map_err(Error::DatabaseError)?;
                 let datetime_modified: chrono::DateTime<chrono::Local> = row.get(1).map_err(Error::DatabaseError)?;
 
-                Ok(Some(Note::new(name, Some(datetime_modified))))
+                Ok(Some(Note::new(name)))
             }, 
             None => Ok(None)
         }
@@ -281,17 +223,10 @@ impl Shelf {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {
-            let mut ok_status = match sync {
+            let ok_status = match sync {
                 true => subject.is_sync(&self), 
                 false => subject.is_valid(&self), 
             };
-
-            if !self.is_exported() {
-                ok_status = match subject.is_entry_exists(&self) {
-                    Ok(v) => v, 
-                    Err(_e) => false, 
-                }; 
-            }
 
             if ok_status {
                 valid_subjects.push(subject.clone());
@@ -345,29 +280,32 @@ impl Shelf {
     /// It can also add the subject instance in the database, if specified. 
     /// 
     /// Returns the subject instance that succeeded in its creation process. 
-    pub fn create_subjects(&self, subjects: &Vec<Subject>, add_to_db: bool) -> Result<Vec<Subject>, Error> {
+    pub fn create_subjects(
+        &self, 
+        subjects: &Vec<Subject>, 
+        add_to_db: bool, 
+        strict: bool, 
+    ) -> Result<Vec<Subject>, Error> {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {
-            if add_to_db {
+            // a subject that already exists in the shelf is considered to be "created"
+            // this is for considering when the already existing subject is considered to be added in the shelf database
+            // though, an available strict mode is made for that case
+            let ok_status = subject.export(&self).is_ok() || (subject.is_valid(&self) && !strict);
+            
+            if ok_status && add_to_db {
                 match self.create_subject_entry(&subject).err() {
                     Some(e) => match e {
-                        Error::NoShelfDatabase (path) => (), 
+                        Error::NoShelfDatabase (path) => return Err(Error::NoShelfDatabase(path)), 
                         _ => continue, 
                     },
-                    None => {
-                        if !self.is_exported() {
-                            valid_subjects.push(subject.clone());
-                            continue;
-                        }
-                        
-                        ()
-                    }, 
+                    None => (), 
                 }
             }
 
             // creating the subject in the filesystem 
-            if subject.export(&self).is_ok() {
+            if ok_status {
                 valid_subjects.push(subject.clone());
             }
         }
@@ -378,7 +316,20 @@ impl Shelf {
     fn create_subject_entry(&self, subject: &Subject) -> Result<i64, Error> {
         let mut insert_subject_stmt = self.db_prepare("INSERT INTO subjects (name, slug, datetime_modified) VALUES (?, ?, ?)")?;
 
-        insert_subject_stmt.insert(&[&subject.name(), &helpers::string::kebab_case(&subject.name()), &subject.datetime_modified().to_rfc3339()]).map_err(Error::DatabaseError)
+        insert_subject_stmt.insert(&[&subject.name(), &helpers::string::kebab_case(&subject.name()), &subject.datetime_modified(&self)?.to_rfc3339()]).map_err(Error::DatabaseError)
+    }
+
+    /// Delete the subject in the shelf. 
+    pub fn delete_subject (&self, subject: &Subject) -> Result<(), Error> {
+        match self.delete_subject_entry(&subject) {
+            Ok(_v) => (), 
+            Err(e) => match e {
+                Error::NoShelfDatabase (_path) => (), 
+                _ => return Err(e), 
+            }, 
+        }
+
+        subject.delete(&self)
     }
 
     /// Deletes the entry and the filesystem of the subject instance in the database. 
@@ -386,22 +337,7 @@ impl Shelf {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {            
-            match self.delete_subject_entry(&subject).err() {
-                Some(e) => match e {
-                    Error::NoShelfDatabase (path) => (), 
-                    _ => continue, 
-                }, 
-                None => { 
-                    if !self.is_exported() {
-                        valid_subjects.push(subject.clone());
-                        continue;
-                    }
-
-                    ()
-                }, 
-            }
-
-            if subject.delete(self).is_ok() {
+            if self.delete_subject(&subject).is_ok() {
                 valid_subjects.push(subject.clone());
             }
         }
@@ -421,17 +357,10 @@ impl Shelf {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
-            let mut ok_status = match sync {
+            let ok_status = match sync {
                 true => note.is_sync(&subject, &self), 
                 false => note.is_path_exists(&subject, &self), 
             }; 
-
-            if !self.is_exported() {
-                ok_status = match note.is_entry_exists(&subject, &self) {
-                    Ok(v) => v, 
-                    Err(_e) => false, 
-                }; 
-            }
 
             if ok_status {
                 valid_notes.push(note.clone());
@@ -478,7 +407,7 @@ impl Shelf {
             let title: String = note_row.get(0).map_err(Error::DatabaseError)?;
             let datetime_modified: chrono::DateTime<chrono::Local> = note_row.get(1).map_err(Error::DatabaseError)?;
 
-            valid_notes.push(Note::new(title, Some(datetime_modified)));
+            valid_notes.push(Note::new(title));
         }
 
         Ok(valid_notes)
@@ -512,7 +441,7 @@ impl Shelf {
             let title: String = note_row.get(0).map_err(Error::DatabaseError)?;
             let datetime_modified: chrono::DateTime<chrono::Local> = note_row.get(1).map_err(Error::DatabaseError)?;
 
-            let note = Note::new(title, Some(datetime_modified));
+            let note = Note::new(title);
 
             valid_notes.push(note);
         }
@@ -520,27 +449,42 @@ impl Shelf {
         Ok(valid_notes)
     }
 
+    /// Create the note in the shelf in the filesystem. 
+    /// 
+    /// If specified, it can also add the note in the shelf database. 
+    /// 
+    /// By default, the method will not return an error if it's already exported. 
+    /// However, you can set the method to be strict on it. 
+    pub fn create_note (
+        &self, 
+        subject: &Subject, 
+        note: &Note, 
+        value: &str, 
+        add_to_db: bool, 
+        strict: bool, 
+    ) -> Result<(), Error> {
+        let ok_status = note.export(&subject, &self, &value).is_ok() || (subject.is_valid(&self) && !strict);
+
+        if ok_status && add_to_db {
+            self.create_note_entry(&subject, &note)?;
+        }
+
+        Ok(())
+    }
+
     /// Creates the files of the note instances in the shelf. 
-    pub fn create_notes (&self, subject: &Subject, notes: &Vec<Note>, value: &serde_json::Map<String, serde_json::Value>, add_to_db: bool) -> Result<Vec<Note>, Error> {
+    pub fn create_notes (
+        &self, 
+        subject: &Subject, 
+        notes: &Vec<Note>, 
+        value: &str, 
+        add_to_db: bool, 
+        strict: bool, 
+    ) -> Result<Vec<Note>, Error> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
-            match self.create_note_entry(&subject, &note).err() {
-                Some(e) => match e {
-                    Error::NoShelfDatabase (path) => (), 
-                    _ => continue, 
-                },
-                None => {
-                    if !self.is_exported() {
-                        valid_notes.push(note.clone());
-                        continue;
-                    }
-
-                    ()
-                }, 
-            }
-
-            if note.export(&subject, &self, &value).is_ok() {
+            if self.create_note(&subject, &note, &value, add_to_db, strict).is_ok() {
                 valid_notes.push(note.clone());
             }
         }
@@ -556,7 +500,7 @@ impl Shelf {
             return Err(Error::ValueError);
         }
 
-        insert_note_stmt.insert(&[&subject_id.unwrap().to_string(), &note.title(), &helpers::string::kebab_case(&note.title()), &note.datetime_modified().to_rfc3339()]).map_err(Error::DatabaseError)
+        insert_note_stmt.insert(&[&subject_id.unwrap().to_string(), &note.title(), &helpers::string::kebab_case(&note.title()), &note.datetime_modified(&subject, &self)?.to_rfc3339()]).map_err(Error::DatabaseError)
     }
 
     /// Deletes the entry and filesystem of the note instances in the shelf. 
@@ -570,16 +514,7 @@ impl Shelf {
                     Error::NoShelfDatabase (_path) => (), 
                     _ => continue, 
                 }, 
-                
-                // if returned `None`, it means it has a database and it succeeded
-                None => { 
-                    if !self.is_exported() {
-                        valid_notes.push(note.clone());
-                        continue;
-                    }
-
-                    ()
-                }, 
+                None => (), 
             }
 
             if note.delete(&subject, self).is_ok() {
@@ -611,17 +546,15 @@ mod tests {
     fn basic_note_usage() -> Result<(), Error> {
         let note_path = PathBuf::from("./tests/notes");
         fs::remove_dir_all(&note_path);
-        let mut test_case: Shelf = Shelf::new(note_path, true)?;
+        let test_case: Shelf = Shelf::new(note_path, true)?;
 
         let test_subject_input = Subject::from_vec_loose(&vec!["Calculus", "Algebra"], &test_case)?;
         let test_note_input = Note::from_vec_loose(&vec!["Precalculus Quick Review", "Introduction to Integrations"], &test_subject_input[0], &test_case)?;
 
-        let test_note_value = json!({ "author": "Gabriel Arazas" });
-
-        let created_subjects = test_case.create_subjects(&test_subject_input, true)?;
+        let created_subjects = test_case.create_subjects(&test_subject_input, true, false)?;
         assert_eq!(created_subjects.len(), 2);
 
-        let created_notes = test_case.create_notes(&test_subject_input[0], &test_note_input, &test_note_value.as_object().unwrap(), true)?;
+        let created_notes = test_case.create_notes(&test_subject_input[0], &test_note_input, consts::NOTE_TEMPLATE, true, false)?;
         assert_eq!(created_notes.len(), 2);
 
         let available_subjects = test_case.get_subjects(&test_subject_input, true)?;
@@ -636,8 +569,6 @@ mod tests {
         let all_available_notes = test_case.get_all_notes_by_subject_from_db(&test_subject_input[0], None)?;
         assert_eq!(all_available_notes.len(), 2);
 
-        test_case.export(&test_note_value.as_object().unwrap())?;
-
         let deleted_notes = test_case.delete_notes(&test_subject_input[0], &test_note_input)?;
         assert_eq!(deleted_notes.len(), 2);
 
@@ -648,10 +579,37 @@ mod tests {
     }
 
     #[test]
+    fn subject_instances_test() -> Result<(), Error> {
+        let note_path = PathBuf::from("./tests/subjects");
+        fs::remove_dir_all(&note_path);
+        let test_case: Shelf = Shelf::new(note_path, true)?;
+
+        let test_subject: Subject = Subject::new("Mathematics".to_string());
+
+        assert_eq!(test_subject.is_valid(&test_case), false);
+        assert_eq!(test_subject.is_entry_exists(&test_case)?, false);
+        assert_eq!(test_subject.is_sync(&test_case), false);
+
+        test_subject.export(&test_case)?;
+
+        assert_eq!(test_subject.is_valid(&test_case), true);
+        assert_eq!(test_subject.is_path_exists(&test_case), true);
+        assert_eq!(test_subject.is_entry_exists(&test_case)?, false);
+
+        test_case.create_subjects(&vec![test_subject.clone()], true, false)?;
+
+        assert_eq!(test_subject.is_valid(&test_case), true);
+        assert_eq!(test_subject.is_path_exists(&test_case), true);
+        assert_eq!(test_subject.is_entry_exists(&test_case)?, true);
+
+        Ok(())
+    }
+
+    #[test]
     #[should_panic]
     fn invalid_note_location() {
         let note_path = PathBuf::from("./test/invalid/location/is/invalid");
-        let mut test_case: Shelf = Shelf::new(note_path, false).unwrap();
+        let _test_case: Shelf = Shelf::new(note_path, false).unwrap();
 
         ()
     }
