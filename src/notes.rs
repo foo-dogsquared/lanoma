@@ -43,7 +43,7 @@ impl Subject {
             return Ok(None)
         }
 
-        let metadata_path = subject.metadata_path(&notes);
+        let metadata_path = subject.metadata_path_in_shelf(&notes);
         let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
         
         let subject: Subject = serde_json::from_str(&metadata).map_err(Error::SerdeValueError)?;
@@ -92,7 +92,7 @@ impl Subject {
     pub fn datetime_modified (&self, notes: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
         match self.is_path_exists(&notes) {
             true => {
-                let metadata = fs::metadata(self.path(&notes)).map_err(Error::IoError)?;
+                let metadata = fs::metadata(self.path_in_shelf(&notes)).map_err(Error::IoError)?;
                 let modification_systemtime = metadata.modified().map_err(Error::IoError)?;
 
                 Ok(chrono::DateTime::<chrono::Local>::from(modification_systemtime))
@@ -102,7 +102,7 @@ impl Subject {
     }
 
     /// Returns the associated path with the given shelf.
-    pub fn path (&self, notes: &Shelf) -> PathBuf {
+    pub fn path_in_shelf (&self, notes: &Shelf) -> PathBuf {
         let mut path = notes.path();
         let subject_slug = helpers::string::kebab_case(&self.name);
         path.push(subject_slug);
@@ -110,11 +110,24 @@ impl Subject {
         path
     }
 
+    /// Returns the path starting with its own. 
+    pub fn path (&self) -> PathBuf {
+        PathBuf::from(helpers::string::kebab_case(&self.name))
+    }
+
     /// Returns the associated metadata file path with the given shelf. 
-    pub fn metadata_path (&self, notes: &Shelf) -> PathBuf {
-        let mut path = self.path(&notes);
+    pub fn metadata_path (&self) -> PathBuf {
+        let mut path = self.path();
         path.push(SUBJECT_METADATA_FILE);
 
+        path
+    }
+
+    /// A quick method for returning the metadata path associated with a shelf. 
+    pub fn metadata_path_in_shelf (&self, shelf: &Shelf) -> PathBuf {
+        let mut path = self.path_in_shelf(&shelf);
+        path.push(SUBJECT_METADATA_FILE);
+        
         path
     }
 
@@ -124,12 +137,12 @@ impl Subject {
             return Err(Error::UnexportedShelfError(notes.path()));
         }
         
-        let path = self.path(&notes);
+        let path = self.path_in_shelf(&notes);
         let dir_builder = DirBuilder::new();
         
         helpers::filesystem::create_folder(&dir_builder, &path)?;
         
-        let metadata_path = self.metadata_path(&notes);
+        let metadata_path = self.metadata_path_in_shelf(&notes);
         let mut metadata_file = OpenOptions::new().create_new(true).write(true).open(metadata_path).map_err(Error::IoError)?;
         metadata_file.write(serde_json::to_string_pretty(&self).map_err(Error::SerdeValueError)?.as_bytes()).map_err(Error::IoError)?;
 
@@ -138,19 +151,19 @@ impl Subject {
 
     /// Deletes the associated folder in the shelf filesystem. 
     pub fn delete(&self, notes: &Shelf) -> Result<(), Error> {
-        let path = self.path(&notes);
+        let path = self.path_in_shelf(&notes);
         
         fs::remove_dir_all(path).map_err(Error::IoError)
     }
 
     /// Checks if the associated path exists from the shelf. 
     pub fn is_path_exists (&self, notes: &Shelf) -> bool {
-        self.path(&notes).exists()
+        self.path_in_shelf(&notes).exists()
     }
 
     /// Checks if the subject has a valid folder structure from the shelf. 
     pub fn is_valid (&self, notes: &Shelf) -> bool {
-        self.metadata_path(&notes).is_file()
+        self.metadata_path_in_shelf(&notes).is_file()
     }
     
     /// Checks if the subject instance has an entry in the shelf database. 
@@ -165,7 +178,7 @@ impl Subject {
 
     /// Checks if the subject instance is present in the filesystem and database in the shelf. 
     pub fn is_sync (&self, notes: &Shelf) -> bool {
-        self.is_valid(&notes) && match self.is_entry_exists(notes) {
+        self.is_valid(&notes) && match self.is_entry_exists(&notes) {
             Ok(v) => v, 
             Err(_e) => false
         }
@@ -255,18 +268,23 @@ impl Note {
         }
     } 
 
-    /// Returns the file name of the note instance along with its associated subject. 
+    /// Returns the path of the note instance along with its associated subject. 
     /// 
     /// It does not necessarily mean that the note exists. 
     /// Be sure to check it first. 
     pub fn path(&self, subject: &Subject, notes: &Shelf) -> PathBuf {
-        let mut path = subject.path(&notes);
-        let slug = helpers::string::kebab_case(&self.title);
-
-        path.push(slug);
-        path.set_extension("tex");
+        let mut path = subject.path_in_shelf(&notes);
+        path.push(self.file_name());
 
         path
+    }
+
+    /// Returns the file name of the note. 
+    pub fn file_name (&self) -> String {
+        let mut slug = helpers::string::kebab_case(&self.title);
+        slug.push_str(".tex");
+        
+        slug
     }
 
     /// Writes the resulting LaTeX file in the filesystem. 
@@ -318,7 +336,7 @@ impl Note {
 
     /// Checks if the associated file in the filesystem and the note entry in the database both exists. 
     pub fn is_sync (&self, subject: &Subject, notes: &Shelf) -> bool {
-        self.is_path_exists(&subject, &notes) && match self.is_entry_exists(&subject, notes) {
+        self.is_path_exists(&subject, &notes) && match self.is_entry_exists(&subject, &notes) {
             Ok(v) => v, 
             Err(_e) => false, 
         }
