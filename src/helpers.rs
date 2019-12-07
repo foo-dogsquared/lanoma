@@ -41,6 +41,7 @@ pub mod string {
 
 pub mod filesystem {
     use std::fs::{ self, DirBuilder };
+    use std::os;
     use std::path::{ Path, PathBuf };
 
     use crate::error::Error;
@@ -88,6 +89,29 @@ pub mod filesystem {
             Ok(string) => string, 
             Err(_err) => default_value.to_string()
         }
+    }
+
+    #[cfg(target_family = "unix")]
+    /// Create a symlink pointing from the source. 
+    pub fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>> (src: P, dst: Q) -> Result<(), Error> {
+        let from = src.as_ref();
+        let to = dst.as_ref();
+        
+        os::unix::fs::symlink(from, to).map_err(Error::IoError)
+    }
+
+    #[cfg(target_family = "windows")]
+    /// Create a symlink pointing from the source. 
+    pub fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>> (src: P, dst: Q) -> Result<(), Error> {
+        let from = src.as_ref();
+        let to = dst.as_ref();
+
+        let result = match from.is_dir() {
+            true => os::windows::fs::symlink_dir(from, to), 
+            false => os::windows::fs::symlink_file(from, to),
+        };
+
+        result.map_err(Error::IoError)
     }
 }
 

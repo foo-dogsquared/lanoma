@@ -2,8 +2,10 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::path;
+use std::sync;
 
 use rusqlite;
+use r2d2;
 use serde_json;
 use handlebars;
 
@@ -43,6 +45,9 @@ pub enum Error {
     HandlebarsTemplateError(handlebars::TemplateError), 
     HandlebarsTemplateFileError(handlebars::TemplateFileError), 
     HandlebarsRenderError(handlebars::RenderError), 
+
+    /// Related erros for r2d2. 
+    R2D2Error(r2d2::Error), 
 }
 
 impl error::Error for Error { }
@@ -62,6 +67,7 @@ impl fmt::Display for Error {
             Error::HandlebarsTemplateError(ref p) => write!(f, "{} is an invalid template.", p),
             Error::HandlebarsTemplateFileError(ref p) => write!(f, "Handlebars with the instance '{}' has an error occurred.", p),
             Error::HandlebarsRenderError(ref p) => write!(f, "{}: Error occurred while rendering.", p),
+            Error::R2D2Error(ref error) => error.fmt(f), 
         }
     }
 }
