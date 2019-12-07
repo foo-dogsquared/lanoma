@@ -1,8 +1,13 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs::{ self, DirBuilder, File };
-use std::path::{ Path, PathBuf };
 use std::io::{ BufReader, Read };
 use std::io::Write;
+use std::path::{ Path, PathBuf };
+use std::process;
+use std::result;
+use std::thread;
+use std::sync;
 
 use handlebars;
 use serde::{ Serialize, Deserialize };
@@ -20,6 +25,9 @@ pub mod notes;
 use shelf::Shelf;
 use error::Error;
 
+pub type Result<T> = result::Result<T, Error>;
+
+// profile constants 
 const PROFILE_METADATA_FILENAME: &str = "profile.json";
 const PROFILE_COMMON_FILES_DIR_NAME: &str = "common";
 const PROFILE_SHELF_FOLDER: &str = "notes";
@@ -28,18 +36,7 @@ const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = "templates";
 const PROFILE_NOTE_TEMPLATE_NAME: &str = "note";
 const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master";
 
-/// The main use of a profile is provide an easy interface for the program. 
-/// Each profile have its own set of notes, allowing you to have multiple profile representing 
-/// different students. 
-/// Also take note that a profile takes its own folder (currently named `texture-notes-profile`).   
-pub struct Profile {
-    path: PathBuf, 
-    notes: Shelf, 
-    metadata: ProfileMetadata, 
-    templates: handlebars::Handlebars, 
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ProfileMetadata {
     name: String, 
     version: String, 
@@ -68,11 +65,32 @@ impl ProfileMetadata {
     }
 }
 
+pub struct CompilationEnvironment {
+    subject: notes::Subject, 
+    notes: Vec<notes::Note>, 
+    command: Vec<String>, 
+}
+
+/// The main use of a profile is provide an easy interface for the program. 
+/// Each profile have its own set of notes, allowing you to have multiple profile representing 
+/// different students. 
+/// Also take note that a profile takes its own folder (currently named `texture-notes-profile`).   
+pub struct Profile {
+    path: PathBuf, 
+    notes: Shelf, 
+    metadata: ProfileMetadata, 
+    templates: handlebars::Handlebars, 
+}
+
 impl Profile {
     /// Initializes the data to set up a new profile. 
     /// 
     /// It also immediately creates the folder structure in the filesystem. 
-   pub fn new<P: AsRef<Path>> (path: P, name: Option<String>, use_db: bool) -> Result<Profile, Error> {
+   pub fn new<P: AsRef<Path>> (
+       path: P, 
+       name: Option<String>, 
+       use_db: bool
+    ) -> Result<Profile> {
         let mut path = path.as_ref().to_path_buf();
 
         if !path.ends_with(consts::TEXTURE_NOTES_DIR_NAME) {
@@ -113,7 +131,7 @@ impl Profile {
     /// Opens an initiated profile. 
     /// 
     /// If the profile does not exist in the given path, it will cause an error. 
-    pub fn open<P: AsRef<Path>> (path: P) -> Result<Profile, Error> {
+    pub fn open<P: AsRef<Path>> (path: P) -> Result<Profile> {
         let mut path: PathBuf = path.as_ref().to_path_buf();
 
         // if the path is not found or does not have the profile metadata
@@ -149,7 +167,7 @@ impl Profile {
     /// Insert the contents of the files inside of the templates directory of the profile in the Handlebars registry. 
     /// 
     /// Take note it will only get the contents of the top-level files in the templates folder. 
-    pub fn set_templates (&mut self) -> Result<(), Error> {
+    pub fn set_templates (&mut self) -> Result<()> {
         if !self.has_templates() {
             return Err(Error::InvalidProfileError(self.path.clone()));
         }
@@ -202,6 +220,17 @@ impl Profile {
         self.templates = handlebars_registry;
         
         Ok(())
+    }
+
+    /// Returns a string from a Handlebars template. 
+    pub fn return_string_from_note_template (
+        &self, 
+        subject: &notes::Subject, 
+        note: &notes::Note
+    ) -> Result<String> {
+        let mut metadata = serde_json::to_value(self.metadata.clone()).map_err(Error::SerdeValueError)?;
+
+        Ok(String::from("d"))
     }
 
     /// Returns the relative common files path of the profile. 
@@ -263,7 +292,7 @@ impl Profile {
         self.is_exported() && self.has_templates() && self.has_common_files() && self.has_metadata() && self.has_shelf()
     }
 
-    pub fn add_entries(&mut self, subjects: &Vec<&str>, notes: &Vec<Vec<&str>>, force: bool) -> Result<(), Error> {
+    pub fn add_entries(&mut self, subjects: &Vec<&str>, notes: &Vec<Vec<&str>>, force: bool) -> Result<()> {
         // creating the subjects in the profile
         // self.notes.create_subjects(&subjects)?;
         
@@ -277,7 +306,7 @@ impl Profile {
         Ok(())
     }
 
-    pub fn remove_entries(&mut self, notes_id: &Vec<i64>, subjects_id: &Vec<i64>, subjects: &Vec<&str>, notes: &Vec<Vec<&str>>, delete: bool) -> Result<(), Error> {
+    pub fn remove_entries(&mut self, notes_id: &Vec<i64>, subjects_id: &Vec<i64>, subjects: &Vec<&str>, notes: &Vec<Vec<&str>>, delete: bool) -> Result<()> {
         // removing the subjects
         // self.notes.delete_subjects(&subjects, delete)?;
         // self.notes.delete_subjects_by_id(&subjects_id, delete)?;
@@ -292,7 +321,7 @@ impl Profile {
         Ok(())
     }
 
-    pub fn list_entries(&mut self, sort: Option<&str>) -> Result<(), Error> {
+    pub fn list_entries(&mut self, sort: Option<&str>) -> Result<()> {
         let mut all_subjects: Vec<notes::Subject> = self.notes.get_all_subjects_from_db(sort)?;
         
         for subject in all_subjects.iter() {
@@ -309,14 +338,152 @@ impl Profile {
         Ok(())
     }
 
-    pub fn compile_entries(&mut self, id_list: Vec<i64>, notes: Vec<String>, main: Vec<String>, cache: bool) {}
+    /// Compiles notes. 
+    /// This uses the concurrency features of Rust. 
+    pub fn compile_notes_in_parallel (
+        &self, 
+        subject: &notes::Subject, 
+        note_list: &Vec<notes::Note>, 
+        thread_count: i16
+    ) -> Result<Vec<notes::Note>> {        
+        let command = self.compile_note_command();
+        
+        let mut note_list_in_reverse = note_list.clone();
+        note_list_in_reverse.reverse();
+        
+        let compilation_environment = CompilationEnvironment {
+            subject: subject.clone(), 
+            notes: note_list_in_reverse, 
+            command, 
+        };
 
-    pub fn open_entry(&mut self, id: i64, execute: String) -> Result<(), Error> {
+        let original_dir = env::current_dir().map_err(Error::IoError)?;
+        env::set_current_dir(subject.path_in_shelf(&self.notes)).map_err(Error::IoError)?;
+        
+        // this will serve as a task queue for the threads to be spawned
+        let compilation_environment = sync::Arc::new(sync::Mutex::new(compilation_environment));
+        let compiled_notes = sync::Arc::new(sync::Mutex::new(vec![]));
+        let mut threads = vec![];
+
+        for i in 0..thread_count {
+            let compilation_environment_mutex = sync::Arc::clone(&compilation_environment);
+            let compiled_notes_mutex = sync::Arc::clone(&compiled_notes);
+            let thread = thread::spawn(move || {
+                let mut compilation_environment = compilation_environment_mutex.lock().unwrap();
+                let mut compiled_notes = compiled_notes_mutex.lock().unwrap();
+
+                while let Some(note) = compilation_environment.notes.pop() {
+                    let mut command_vector = compilation_environment.command.clone(); 
+                    command_vector.push(note.file_name());
+
+                    let mut command_process = process::Command::new(command_vector.remove(0));
+                    for arg in command_vector.into_iter() {
+                        command_process.arg(arg);
+                    }
+
+                    let command_output = match command_process.output().map_err(Error::IoError) {
+                        Ok(v) => v, 
+                        Err(_e) => continue, 
+                    };
+
+                    if !command_output.status.success() {
+                        continue;
+                    }
+
+                    compiled_notes.push(note);
+                }
+            });
+
+            threads.push(thread);
+        }
+
+        // waiting for all threads to be done 
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        env::set_current_dir(original_dir).map_err(Error::IoError)?;
+
+        // at this point, the Arc should have no owners, allowing it to be moved out 
+        match sync::Arc::try_unwrap(compiled_notes) {
+            Ok(v) => Ok(v.into_inner().unwrap()), 
+            Err(_e) => Err(Error::ValueError),  
+        }
+    }
+
+    /// Compile a note of a subject. 
+    /// 
+    /// It uses the `command` member in the profile metadata. 
+    /// This funciton merely depends on appending the note in the resulting command. 
+    /// 
+    /// If it's empty, the default command is `latexmk $NOTEFILE`. 
+    pub fn compile_note (
+        &self, 
+        subject: &notes::Subject, 
+        note: &notes::Note, 
+    ) -> Result<process::Output> {
+        let mut command_and_args: Vec<String> = self.compile_note_command();
+
+        // change the current working directory to the note path        
+        let original_dir = env::current_dir().map_err(Error::IoError)?;
+        env::set_current_dir(subject.path_in_shelf(&self.notes)).map_err(Error::IoError)?;
+        let mut relative_file_path_to_current_dir = env::current_dir().map_err(Error::IoError)?;
+        relative_file_path_to_current_dir.push(note.file_name());
+        command_and_args.push(relative_file_path_to_current_dir.to_str().unwrap().to_string());
+        
+        let mut command_process = process::Command::new(command_and_args.remove(0));
+        for arg in command_and_args.into_iter() {
+            command_process.arg(arg);
+        }
+
+        let command = command_process.output().map_err(Error::IoError); 
+
+        env::set_current_dir(original_dir).map_err(Error::IoError)?;
+
+        command
+    }
+
+    /// Compile the master note of the subject. 
+    /// 
+    /// The master note is basically the combination of the notes (the top=level LaTeX documents) of the subject. 
+    pub fn compile_master_note (&self, subject: &notes::Subject) {}
+
+    pub fn open_entry(&mut self, id: i64, execute: String) -> Result<()> {
         Ok(())
     }
 
-    pub fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>> (&self, from: P, to: Q) -> Result<(), Error> {
-        Ok(())
+    /// As self-explanatory as the function name, it creates a symlink pointing to the common files folder. 
+    /// 
+    /// This is mostly used for the compilation process or if you want to statically create a symlink for your notes. 
+    pub fn create_symlink_from_common_files_folder<P: AsRef<Path>>(&self, dst: P) -> Result<()> {
+        helpers::filesystem::create_symlink(self.common_files_path(), dst.as_ref())
+    }
+
+    /// Returns the command for compiling the notes. 
+    /// By default, the compilation command is `latexmk -pdf`. 
+    /// 
+    /// If there's no valid value found from the key (i.e., invalid type), it will return the default command. 
+    pub fn compile_note_command (&self) -> Vec<String> {
+        let PROFILE_DEFAULT_COMMAND = vec![ String::from("latexmk"), String::from("-pdf") ];
+        match self.metadata.extra.get("command").as_ref() {
+            Some(value) => match value.is_array() { 
+                true => {
+                    let json_array = value.as_array().unwrap();
+                    let mut vector: Vec<String> = vec![];
+                    
+                    for command_arg in json_array.iter() {
+                        match command_arg {
+                            serde_json::Value::String (string) => vector.push(string.clone()), 
+                            _ => continue, 
+                        }
+                    }
+    
+                    vector
+                }, 
+                false => PROFILE_DEFAULT_COMMAND, 
+            }, 
+            None => PROFILE_DEFAULT_COMMAND, 
+        }
     }
 }
 
@@ -326,20 +493,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn profile_init_test() -> Result<(), Error> {
+    fn profile_init_test() -> Result<()> {
         let test_folder_name = format!("./tests/{}", consts::TEXTURE_NOTES_DIR_NAME);
         let test_path = PathBuf::from(&test_folder_name);
         fs::remove_dir_all(&test_path);
         let mut test_profile: Profile = Profile::new(&test_path, None, true)?;
 
-        let test_subjects = vec!["Calculus", "Algebra", "Physics"];
-        let test_notes = vec![
-            vec!["Calculus", "Introduction to Precalculus", "Introduction to Integrations"], 
-            vec!["Algebra", "Introduction to Functions"], 
-        ];
+        let test_subjects = notes::Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Physics"], &test_profile.notes)?;
+        let test_notes = notes::Note::from_vec_loose(
+            &vec!["Introduction to Precalculus", "Introduction to Integrations", "Taylor Series", "Introduction to Limits"], 
+            &test_subjects[0], &test_profile.notes)?;
+        let test_input = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
+
+        % document metadata
+        \author{ {{~author~}} }
+        \title{ {{~title~}} }
+        \date{ {{~date~}} }
         
-        test_profile.add_entries(&test_subjects, &test_notes, false)?;
-        test_profile.remove_entries(&vec![], &vec![], &test_subjects, &test_notes, true)?;
+        \begin{document}
+        This is a content sample.
+        \end{document}
+        ";
+
+        test_profile.notes.create_subjects(&test_subjects, true, false)?;
+        test_profile.notes.create_notes(&test_subjects[0], &test_notes, test_input, true, false)?;
+        test_profile.compile_notes_in_parallel(&test_subjects[0], &test_notes, 4)?;
 
         Ok(())
     }
