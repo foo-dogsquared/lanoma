@@ -19,6 +19,8 @@ Nonetheless, pull requests for improvements are always welcome!
 While creating this program, I have certain objectives to attain. 
 Setting up and openly stating the objectives can make you learn the strengths and limitations of the program. 
 
+* Create a reusable LaTeX notes setup instead of specifically crafting one for every book. 
+
 * Create a personal knowledge base (made with LaTeX documents) that is easily searchable and retrievable. 
 
 * Automate LaTeX files management including adding, deleting, and compiling documents. 
@@ -36,9 +38,10 @@ I hope implementing some features that mitigates against that (but not fully).
 
 Now the objectives are out, let's explicitly lay out the expected limitations of this program. 
 
-* First and foremost, it's a niche tool for a niche use. 
+* First and foremost, it's a niche tool for a **very** niche use. 
+Also, with the use of makefiles and shell scripts, you can easily set up a compilation workflow for your LaTeX documents. 
 
-* Linking between concepts similar to a mind map is not possible. 
+* If we're talking about personal knowledge bases, linking between concepts similar to a mind map is not possible. 
 For me, it's suitable to think more of a https://en.wikipedia.org/wiki/Tree_%28data_structure%29[tree] rather than a https://en.wikipedia.org/wiki/Graph_(data_structure)[graph]. 
 
 * Limited importing options for LaTeX documents. 
@@ -86,7 +89,7 @@ texture-notes-v2 init --target "~/Documents"
 ----
 
 Once you have initialized a profile, you can now create subjects and notes. 
-Though in order to add notes, you need to create subjects/folders. 
+Though in order to add notes, you need to create subjects/folders first. 
 
 [source, shell]
 ----
@@ -140,3 +143,22 @@ For now, it's not a priority.
 * Cross-platform compatibility. 
 As a user of multiple OS (i.e., Windows and Linux), I really like to make this possible to easily use this program. 
 
+
+
+
+== Development 
+
+The application is still in active development (though as a side project, mind you). 
+
+To set up for development, you just need https://www.rust-lang.org/[Rust] installed. 
+If you haven't installed it yet, https://www.rust-lang.org/tools/install[be sure to follow the instructions]. 
+
+The project uses https://github.com/rust-lang/cargo[Cargo] for managing the project. 
+
+* To run the binary of the project, execute `cargo run` in the shell. 
+To add command line arguments, just append two dashes (`--`) after the run command. 
+
+* To run the tests of the library crate, call `cargo test`. 
+
+* Using the https://github.com/rust-lang/rls[RLS] plugin of your text editor of choice is recommended. 
+If you're using https://code.visualstudio.com/[Visual Studio Code], it is fully recommended to have it installed. 
