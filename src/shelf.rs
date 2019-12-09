@@ -12,6 +12,7 @@ use crate::consts;
 use crate::helpers;
 use crate::error::Error;
 use crate::notes::{ Note, Subject };
+use crate::Result;
 
 // even though string literals are always static, 
 // it is better to anotate them for explicit intentions
@@ -30,26 +31,21 @@ impl Shelf {
     /// Create a new shelf instance and immediately being created in the filesystem. 
     /// 
     /// If you want to import a shelf instance from the filesystem, use `Shelf::from`. 
-    pub fn new (path: PathBuf, use_database: bool) -> Result<Self, Error> {
-        let mut notes_object = Shelf { path: path.clone(), db: None };
-
-        if !notes_object.is_exported() {
-            let dir_builder = DirBuilder::new();
-            helpers::filesystem::create_folder(&dir_builder, notes_object.path())?;
-        }
+    pub fn new (path: PathBuf, use_database: bool) -> Result<Self> {
+        let mut notes_object = Shelf { path, db: None };
 
         if use_database {
-            notes_object.set_db_pool()?;
+            notes_object.set_db_pool_in_memory()?;
         }
 
         Ok(notes_object)
     }
 
-    /// Creates a shelf instance from the path. 
-    pub fn from (path: PathBuf) -> Result<Self, Error> {
-        let mut notes_object = Shelf { path: path.clone(), db: None };
+    /// Checks if the shelf exists. 
+    pub fn from (path: PathBuf) -> Result<Self> {
+        let mut notes_object = Shelf { path, db: None };
 
-        if !path.exists() {
+        if notes_object.is_valid() {
             return Err(Error::ValueError);
         }
 
@@ -69,7 +65,7 @@ impl Shelf {
     /// Returns the old path. 
     /// 
     /// If the shelf is exported, it will also move the folder in the filesystem. 
-    pub fn set_path<P: AsRef<Path>> (&mut self, to: P) -> Result<PathBuf, Error> {
+    pub fn set_path<P: AsRef<Path>> (&mut self, to: P) -> Result<PathBuf> {
         let old_path = self.path();
         let new_path = to.as_ref().to_path_buf();
 
@@ -91,16 +87,16 @@ impl Shelf {
     }
 
     /// Check if the shelf has a database file. 
-    pub fn has_db (&self) -> bool {
+    pub fn has_db_file (&self) -> bool {
         self.db_path().exists()
     }
 
-    /// Set up the associated database of the shelf. 
+    /// Set up the associated database of the shelf from the filesystem. 
     /// It also means the database support for the shelf is enabled. 
-    fn set_db_pool (&mut self) -> Result<(), Error> {
+    fn set_db_pool (&mut self) -> Result<()> {
         let db_path = self.db_path();
 
-        if self.has_db() {
+        if !self.has_db_file() {
             return Err(Error::NoShelfDatabase(db_path));
         }
 
@@ -112,10 +108,30 @@ impl Shelf {
         Ok(())
     }
 
+    /// Sets the database pool in memory. 
+    fn set_db_pool_in_memory(&mut self) -> Result<()> {
+        let db_manager = r2d2_sqlite::SqliteConnectionManager::memory().with_init(| conn | conn.execute_batch(consts::SQLITE_SCHEMA));
+        let db_pool = r2d2::Pool::builder().max_size(20).build(db_manager).map_err(Error::R2D2Error)?;
+
+        self.db = Some(db_pool);
+
+        Ok(())   
+    }
+
+    /// Creates a backup of the database. 
+    /// Also useful for saving an in-memory database to a file. 
+    fn db_backup(&self) -> Result<()> {
+        let db_conn = self.open_db()?;
+
+        db_conn.backup(rusqlite::DatabaseName::Main, self.db_path(), None).map_err(Error::DatabaseError)?;
+        
+        Ok(())
+    }
+
     /// Create a connection from the shelf database (if it has any). 
     /// This is mainly for using the database in multiple threads since Rusqlite (and the nature of Rust) does not allow it. 
     /// See [rusqlite issue #188](https://github.com/jgallagher/rusqlite/issues/188) for more information on the topic of SQLite thread safety. 
-    fn open_db (&self) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, Error> {
+    fn open_db (&self) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>> {
         let db_conn = match self.db.as_ref() {
             Some(db_pool) => db_pool.get().map_err(Error::R2D2Error)?, 
             None => return Err(Error::NoShelfDatabase(self.path())), 
@@ -134,13 +150,43 @@ impl Shelf {
         self.path.exists()
     }
 
+    /// Checks if the shelf is valid. 
+    pub fn is_valid(&self) -> bool {
+        self.is_exported()
+    }
+
+    /// Exports the shelf in the filesystem. 
+    /// If the shelf has a database, it will also export subjects at the filesystem. 
+    /// However, notes are not exported due to needing a dynamic output. 
+    pub fn export(&mut self) -> Result<()> {
+        let dir_builder = DirBuilder::new();
+        
+        if !self.is_valid() {
+            helpers::filesystem::create_folder(&dir_builder, self.path())?;
+        }
+
+        if !self.use_db() {
+            self.db_backup()?;
+            self.set_db_pool()?;
+        }
+
+        let subjects = self.get_all_subjects_from_db(None)?;
+        for subject in subjects {
+            if !subject.is_path_exists(&self) {
+                subject.export(&self)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Gets the associated subject ID in the database. 
     /// 
     /// This does not check if the subject is in the filesystem. 
-    pub fn get_subject_id (&self, subject: &Subject) -> Result<Option<i64>, Error> {
+    pub fn get_subject_id (&self, subject: &Subject) -> Result<Option<i64>> {
         let subject_slug = helpers::string::kebab_case(&subject.name());
         let db_conn = self.open_db()?;
-        let mut select_stmt = db_conn.prepare("SELECT id FROM SUBJECTS WHERE slug == ?").map_err(Error::DatabaseError)?;
+        let mut select_stmt = db_conn.prepare("SELECT id FROM subjects WHERE slug == ?").map_err(Error::DatabaseError)?;
         let mut row_result = select_stmt.query(&[&subject_slug]).map_err(Error::DatabaseError)?;
 
         match row_result.next().map_err(Error::DatabaseError)? {
@@ -155,7 +201,7 @@ impl Shelf {
     /// Gets the associated subject instance with its ID in the database. 
     /// 
     /// Take caution as this does not check if the subject is in the filesystem. 
-    pub fn get_subject_by_id (&self, id: i64) -> Result<Option<Subject>, Error> {
+    pub fn get_subject_by_id (&self, id: i64) -> Result<Option<Subject>> {
         let db_conn = self.open_db()?;
         let mut select_stmt = db_conn.prepare("SELECT name FROM subjects WHERE id == ?").map_err(Error::DatabaseError)?;
         let mut row_result = select_stmt.query(&[&id]).map_err(Error::DatabaseError)?;
@@ -174,7 +220,7 @@ impl Shelf {
     }
 
     /// Gets the associated ID of the note instance in the database. 
-    pub fn get_note_id(&self, subject: &Subject, note: &Note) -> Result<Option<i64>, Error> {
+    pub fn get_note_id(&self, subject: &Subject, note: &Note) -> Result<Option<i64>> {
         let subject_id = match self.get_subject_id(&subject)? {
             Some(id) => id, 
             None => return Err(Error::ValueError), 
@@ -197,15 +243,14 @@ impl Shelf {
     }
 
     /// Gets the associated note instance with its ID in the database. 
-    pub fn get_note_by_id (&self, id: i64) -> Result<Option<Note>, Error> {
+    pub fn get_note_by_id (&self, id: i64) -> Result<Option<Note>> {
         let db_conn = self.open_db()?;
-        let mut select_stmt = db_conn.prepare("SELECT name, datetime_modified FROM subjects WHERE id == ?").map_err(Error::DatabaseError)?;
+        let mut select_stmt = db_conn.prepare("SELECT name FROM subjects WHERE id == ?").map_err(Error::DatabaseError)?;
         let mut result_row = select_stmt.query(&[&id]).map_err(Error::DatabaseError)?;
 
         match result_row.next().map_err(Error::DatabaseError)? {
             Some(row) => {
                 let name = row.get(0).map_err(Error::DatabaseError)?;
-                let datetime_modified: chrono::DateTime<chrono::Local> = row.get(1).map_err(Error::DatabaseError)?;
 
                 Ok(Some(Note::new(name)))
             }, 
@@ -216,7 +261,7 @@ impl Shelf {
     /// Gets the associated subject instance with the one of the note ID in the database. 
     /// 
     /// This does not check if the subject is in the shelf filesystem. 
-    pub fn get_subject_by_note_id (&self, id: i64) -> Result<Option<Subject>, Error> {
+    pub fn get_subject_by_note_id (&self, id: i64) -> Result<Option<Subject>> {
         let db_conn = self.open_db()?;
         let mut select_stmt = db_conn.prepare("SELECT subject_id FROM notes WHERE id == ?").map_err(Error::DatabaseError)?;
         let mut result_row = select_stmt.query(&[&id]).map_err(Error::DatabaseError)?;
@@ -238,7 +283,7 @@ impl Shelf {
     /// Gets the subjects in the database. 
     /// 
     /// It can also check if the subject instance has an entry in the database, if specified. 
-    pub fn get_subjects(&self, subjects: &Vec<Subject>, sync: bool) -> Result<Vec<Subject>, Error> {
+    pub fn get_subjects(&self, subjects: &Vec<Subject>, sync: bool) -> Result<Vec<Subject>> {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {
@@ -256,7 +301,7 @@ impl Shelf {
     }
 
     /// Returns a vector of valid subjects (by its ID) found in the database. 
-    pub fn get_subjects_by_id (&self, subject_ids: &Vec<i64>, sort: Option<&str>) -> Result<Vec<Subject>, Error> {
+    pub fn get_subjects_by_id (&self, subject_ids: &Vec<i64>, sort: Option<&str>) -> Result<Vec<Subject>> {
         let mut valid_subjects: Vec<Subject> = vec![];
         
         for &id in subject_ids.iter() {
@@ -272,8 +317,8 @@ impl Shelf {
     /// Returns all of the associated subject instances in the database. 
     /// 
     /// This does not check if the subject instance exists in the filesystem. 
-    pub fn get_all_subjects_from_db (&self, sort: Option<&str>) -> Result<Vec<Subject>, Error> {
-        let mut select_stmt = String::from("SELECT name, datetime_modified FROM subjects");
+    pub fn get_all_subjects_from_db (&self, sort: Option<&str>) -> Result<Vec<Subject>> {
+        let mut select_stmt = String::from("SELECT name FROM subjects");
         match sort {
             Some(v) => {
                 select_stmt.push_str(" ORDER BY ");
@@ -305,7 +350,7 @@ impl Shelf {
         subjects: &Vec<Subject>, 
         add_to_db: bool, 
         strict: bool, 
-    ) -> Result<Vec<Subject>, Error> {
+    ) -> Result<Vec<Subject>> {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {
@@ -333,15 +378,15 @@ impl Shelf {
         Ok(valid_subjects)
     }
 
-    fn create_subject_entry(&self, subject: &Subject) -> Result<i64, Error> {
+    fn create_subject_entry(&self, subject: &Subject) -> Result<i64> {
         let db_conn = self.open_db()?;
-        let mut insert_subject_stmt = db_conn.prepare("INSERT INTO subjects (name, slug, datetime_modified) VALUES (?, ?, ?)").map_err(Error::DatabaseError)?;
+        let mut insert_subject_stmt = db_conn.prepare("INSERT INTO subjects (name, slug) VALUES (?, ?)").map_err(Error::DatabaseError)?;
 
-        insert_subject_stmt.insert(&[&subject.name(), &helpers::string::kebab_case(&subject.name()), &subject.datetime_modified(&self)?.to_rfc3339()]).map_err(Error::DatabaseError)
+        insert_subject_stmt.insert(&[&subject.name(), &helpers::string::kebab_case(&subject.name())]).map_err(Error::DatabaseError)
     }
 
     /// Delete the subject in the shelf. 
-    pub fn delete_subject (&self, subject: &Subject) -> Result<(), Error> {
+    pub fn delete_subject (&self, subject: &Subject) -> Result<()> {
         match self.delete_subject_entry(&subject) {
             Ok(_v) => (), 
             Err(e) => match e {
@@ -354,7 +399,7 @@ impl Shelf {
     }
 
     /// Deletes the entry and the filesystem of the subject instance in the database. 
-    pub fn delete_subjects (&self, subjects: &Vec<Subject>) -> Result<Vec<Subject>, Error> {
+    pub fn delete_subjects (&self, subjects: &Vec<Subject>) -> Result<Vec<Subject>> {
         let mut valid_subjects: Vec<Subject> = vec![];
 
         for subject in subjects.iter() {            
@@ -366,7 +411,7 @@ impl Shelf {
         Ok(valid_subjects)
     }
 
-    fn delete_subject_entry (&self, subject: &Subject) -> Result<usize, Error> {
+    fn delete_subject_entry (&self, subject: &Subject) -> Result<usize> {
         let db_conn = self.open_db()?;
         let mut delete_subject_stmt = db_conn.prepare("DELETE FROM subjects WHERE name == ?").map_err(Error::DatabaseError)?;
 
@@ -375,7 +420,7 @@ impl Shelf {
 
     /// Get the valid notes in the shelf. 
     /// It can also check if the notes are in the shelf database. 
-    pub fn get_notes (&self, subject: &Subject, notes: &Vec<Note>, sync: bool) -> Result<Vec<Note>, Error> {
+    pub fn get_notes (&self, subject: &Subject, notes: &Vec<Note>, sync: bool) -> Result<Vec<Note>> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
@@ -395,7 +440,7 @@ impl Shelf {
     /// Returns the associated note instances from the database with its ID. 
     /// 
     /// This does not check if the note instances are present in the filesystem. 
-    pub fn get_notes_by_id (&self, note_ids: &Vec<i64>) -> Result<Vec<Note>, Error> {
+    pub fn get_notes_by_id (&self, note_ids: &Vec<i64>) -> Result<Vec<Note>> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for &id in note_ids.iter() {
@@ -411,8 +456,8 @@ impl Shelf {
     /// Returns all of the note instances in the database. 
     /// 
     /// This does not check if the note instances are present in the filesystem as well. 
-    pub fn get_all_notes_from_db (&self, sort: Option<&str>) -> Result<Vec<Note>, Error> {
-        let mut sql_string = String::from("SELECT title, datetime_modified FROM notes");
+    pub fn get_all_notes_from_db (&self, sort: Option<&str>) -> Result<Vec<Note>> {
+        let mut sql_string = String::from("SELECT title FROM notes");
         match sort {
             Some(order) => {
                 sql_string.push_str(" ORDER BY ");
@@ -428,7 +473,6 @@ impl Shelf {
         let mut result_rows = select_stmt.query(rusqlite::NO_PARAMS).map_err(Error::DatabaseError)?;
         while let Some(note_row) = result_rows.next().map_err(Error::DatabaseError)? {
             let title: String = note_row.get(0).map_err(Error::DatabaseError)?;
-            let datetime_modified: chrono::DateTime<chrono::Local> = note_row.get(1).map_err(Error::DatabaseError)?;
 
             valid_notes.push(Note::new(title));
         }
@@ -441,7 +485,7 @@ impl Shelf {
     /// This does not verify if the note instances are present in the filesystem. 
     /// 
     /// If the shelf has no database, it will return an empty vector. 
-    pub fn get_all_notes_by_subject_from_db (&self, subject: &Subject, sort: Option<&str>) -> Result<Vec<Note>, Error> {
+    pub fn get_all_notes_by_subject_from_db (&self, subject: &Subject, sort: Option<&str>) -> Result<Vec<Note>> {
         let mut select_string = String::from("SELECT title FROM notes WHERE subject_id == ?");
         match sort {
             Some(order) => {
@@ -486,7 +530,7 @@ impl Shelf {
         value: &str, 
         add_to_db: bool, 
         strict: bool, 
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let ok_status = note.export(&subject, &self, &value).is_ok() || (subject.is_valid(&self) && !strict);
 
         if ok_status && add_to_db {
@@ -504,7 +548,7 @@ impl Shelf {
         value: &str, 
         add_to_db: bool, 
         strict: bool, 
-    ) -> Result<Vec<Note>, Error> {
+    ) -> Result<Vec<Note>> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
@@ -516,20 +560,21 @@ impl Shelf {
         Ok(valid_notes)
     }
 
-    fn create_note_entry (&self, subject: &Subject, note: &Note) -> Result<i64, Error> {
+    /// Create a note entry in the shelf database. 
+    fn create_note_entry (&self, subject: &Subject, note: &Note) -> Result<i64> {
         let db_conn = self.open_db()?;
-        let mut insert_note_stmt = db_conn.prepare("INSERT INTO notes (subject_id, title, slug, datetime_modified) VALUES (?, ?, ?, ?)").map_err(Error::DatabaseError)?;
+        let mut insert_note_stmt = db_conn.prepare("INSERT INTO notes (subject_id, title, slug) VALUES (?, ?, ?)").map_err(Error::DatabaseError)?;
 
         let subject_id = self.get_subject_id(&subject)?;
         if subject_id.is_none() {
             return Err(Error::ValueError);
         }
 
-        insert_note_stmt.insert(&[&subject_id.unwrap().to_string(), &note.title(), &helpers::string::kebab_case(&note.title()), &note.datetime_modified(&subject, &self)?.to_rfc3339()]).map_err(Error::DatabaseError)
+        insert_note_stmt.insert(&[&subject_id.unwrap().to_string(), &note.title(), &helpers::string::kebab_case(&note.title())]).map_err(Error::DatabaseError)
     }
 
     /// Deletes the entry and filesystem of the note instances in the shelf. 
-    pub fn delete_notes (&self, subject: &Subject, notes: &Vec<Note>) -> Result<Vec<Note>, Error> {
+    pub fn delete_notes (&self, subject: &Subject, notes: &Vec<Note>) -> Result<Vec<Note>> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
@@ -550,7 +595,7 @@ impl Shelf {
         Ok(valid_notes)
     }
 
-    fn delete_note_entry (&self, subject: &Subject, note: &Note) -> Result<usize, Error> {
+    fn delete_note_entry (&self, subject: &Subject, note: &Note) -> Result<usize> {
         let note_id = match self.get_note_id(&subject, &note)? {
             Some(v) => v, 
             None => return Err(Error::ValueError), 
@@ -569,7 +614,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn basic_note_usage() -> Result<(), Error> {
+    fn basic_note_usage() -> Result<()> {
         let note_path = PathBuf::from("./tests/notes");
         fs::remove_dir_all(&note_path);
         let test_case: Shelf = Shelf::new(note_path, true)?;
@@ -605,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn subject_instances_test() -> Result<(), Error> {
+    fn subject_instances_test() -> Result<()> {
         let note_path = PathBuf::from("./tests/subjects");
         fs::remove_dir_all(&note_path);
         let test_case: Shelf = Shelf::new(note_path, true)?;

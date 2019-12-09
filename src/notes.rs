@@ -259,7 +259,7 @@ impl Note {
     pub fn datetime_modified (&self, subject: &Subject, shelf: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
         match self.is_path_exists(&subject, &shelf) {
             true => {
-                let metadata = fs::metadata(self.path(&subject, &shelf)).map_err(Error::IoError)?;
+                let metadata = fs::metadata(self.path_in_shelf(&subject, &shelf)).map_err(Error::IoError)?;
                 let modification_time = metadata.modified().map_err(Error::IoError)?;
 
                 Ok(chrono::DateTime::<chrono::Local>::from(modification_time))
@@ -272,8 +272,16 @@ impl Note {
     /// 
     /// It does not necessarily mean that the note exists. 
     /// Be sure to check it first. 
-    pub fn path(&self, subject: &Subject, notes: &Shelf) -> PathBuf {
+    pub fn path_in_shelf(&self, subject: &Subject, notes: &Shelf) -> PathBuf {
         let mut path = subject.path_in_shelf(&notes);
+        path.push(self.file_name());
+
+        path
+    }
+
+    /// Returns the path of the note relative to the subject. 
+    pub fn path(&self, subject: &Subject) -> PathBuf {
+        let mut path = subject.path();
         path.push(self.file_name());
 
         path
@@ -301,7 +309,7 @@ impl Note {
             return Err(Error::UnexportedShelfError(notes.path()));
         }
         
-        let path = self.path(&subject, &notes);
+        let path = self.path_in_shelf(&subject, &notes);
         let mut note_file = OpenOptions::new().create_new(true).write(true).open(path).map_err(Error::IoError)?;
         note_file.write(template.as_bytes()).map_err(Error::IoError)?;
 
@@ -312,14 +320,14 @@ impl Note {
     /// 
     /// This does not delete the entry in the notes database. 
     pub fn delete (&self, subject: &Subject, notes: &Shelf) -> Result<(), Error> {
-        let path = self.path(&subject, &notes);
+        let path = self.path_in_shelf(&subject, &notes);
 
         fs::remove_file(path).map_err(Error::IoError)
     }
 
     /// Checks for the file if it exists in the shelf. 
     pub fn is_path_exists (&self, subject: &Subject, notes: &Shelf) -> bool {
-        let path = self.path(&subject, &notes);
+        let path = self.path_in_shelf(&subject, &notes);
 
         path.exists()
     }

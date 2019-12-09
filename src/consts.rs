@@ -7,13 +7,10 @@ CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER,
     name TEXT UNIQUE NOT NULL,
     slug TEXT UNIQUE NOT NULL, 
-    datetime_modified DATETIME NOT NULL,
     PRIMARY KEY(id),
     CHECK(
         TYPEOF(name) == 'text' AND
-        LENGTH(name) <= 128 AND
-        
-        TYPEOF(datetime_modified) == 'text'
+        LENGTH(name) <= 128 
     )
 );
 
@@ -22,7 +19,6 @@ CREATE TABLE IF NOT EXISTS notes (
     title TEXT NOT NULL,
     slug TEXT NOT NULL, 
     subject_id INTEGER NOT NULL,
-    datetime_modified DATETIME NOT NULL,
     PRIMARY KEY(id),
     FOREIGN KEY(subject_id) REFERENCES subjects(id)
         ON DELETE CASCADE
@@ -31,10 +27,7 @@ CREATE TABLE IF NOT EXISTS notes (
         -- checking if the title is a string with less than 512 characters
         TYPEOF(title) == 'text' AND
         LENGTH(title) <= 256 AND
-        LOWER(title) NOT IN ('main', 'graphics') AND
-
-        -- checking if the datetime is indeed in ISO format
-        TYPEOF(datetime_modified) == 'text'
+        LOWER(title) NOT IN ('main', 'graphics') 
     )
 );
 
