@@ -2,14 +2,13 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::path;
-use std::sync;
+use std::process;
+use std::convert::From;
 
 use rusqlite;
 use r2d2;
 use serde_json;
 use handlebars;
-
-use crate::notes;
 
 /// An enum for errors possible to happen in the Texture Notes library. 
 #[derive(Debug)]
@@ -35,6 +34,9 @@ pub enum Error {
     /// IO-related errors mainly given by the official standard library IO library.  
     IoError(io::Error), 
 
+    /// Given when a shell process has gone something wrong. 
+    ProcessError(process::ExitStatus),
+
     /// Error when a part of the profile data is missing.
     MissingDataError(String), 
 
@@ -50,6 +52,27 @@ pub enum Error {
     R2D2Error(r2d2::Error), 
 }
 
+impl From<Error> for i32 {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::ValueError => 1, 
+            Error::InvalidProfileError (_) => 2, 
+            Error::NoShelfDatabase (_) => 3, 
+            Error::UnexportedShelfError (_) => 4, 
+            Error::DanglingSubjectError (_) => 5, 
+            Error::DatabaseError (_) => 6, 
+            Error::R2D2Error (_) => 6, 
+            Error::IoError (_) => 7, 
+            Error::ProcessError (_) => 8, 
+            Error::SerdeValueError (_) => 9, 
+            Error::HandlebarsRenderError (_) => 10, 
+            Error::HandlebarsTemplateError (_) => 10, 
+            Error::HandlebarsTemplateFileError (_) => 10, 
+            _ => -1
+        }
+    }
+}
+
 impl error::Error for Error { }
 
 impl fmt::Display for Error {
@@ -61,6 +84,7 @@ impl fmt::Display for Error {
             Error::UnexportedShelfError(ref path) => write!(f, "The shelf at path '{}' is not yet exported in the filesystem.", path.to_str().unwrap()), 
             Error::DanglingSubjectError(ref path) => write!(f, "The subject at path '{}' is missing", path.to_string_lossy()),
             Error::DatabaseError(ref err) => err.fmt(f), 
+            Error::ProcessError(ref _exit) => write!(f, "The process is not successful."), 
             Error::IoError(ref err) => err.fmt(f), 
             Error::MissingDataError(ref p) => write!(f, "{} is missing.", p),
             Error::SerdeValueError(ref p) => write!(f, "{} is invalid.", p),
