@@ -312,7 +312,7 @@ impl Note {
         let path = self.path_in_shelf(&subject, &notes);
         let mut note_file = OpenOptions::new().create_new(true).write(true).open(path).map_err(Error::IoError)?;
         note_file.write(template.as_bytes()).map_err(Error::IoError)?;
-
+        
         Ok(())
     }
 
