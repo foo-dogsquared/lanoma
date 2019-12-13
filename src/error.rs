@@ -19,8 +19,14 @@ pub enum Error {
     /// Error when the profile is not valid or does not exists
     InvalidProfileError(path::PathBuf), 
 
+    /// Given when the operation requires the profile to be nonexistent. 
+    ProfileAlreadyExists(path::PathBuf), 
+
     /// Used when the shelf has no database while attempting to do some database operations. 
     NoShelfDatabase(path::PathBuf), 
+
+    /// Given when the shelf operation requires the shelf to be nonexistent in the filesystem. 
+    ShelfAlreadyExists(path::PathBuf), 
 
     /// Used when the shelf is not yet exported while attempting to do some filesystem operations. 
     UnexportedShelfError(path::PathBuf), 
@@ -52,22 +58,24 @@ pub enum Error {
     R2D2Error(r2d2::Error), 
 }
 
-impl From<Error> for i32 {
-    fn from(error: Error) -> Self {
+impl From<&Error> for i32 {
+    fn from(error: &Error) -> Self {
         match error {
             Error::ValueError => 1, 
             Error::InvalidProfileError (_) => 2, 
-            Error::NoShelfDatabase (_) => 3, 
-            Error::UnexportedShelfError (_) => 4, 
-            Error::DanglingSubjectError (_) => 5, 
-            Error::DatabaseError (_) => 6, 
-            Error::R2D2Error (_) => 6, 
-            Error::IoError (_) => 7, 
-            Error::ProcessError (_) => 8, 
-            Error::SerdeValueError (_) => 9, 
-            Error::HandlebarsRenderError (_) => 10, 
-            Error::HandlebarsTemplateError (_) => 10, 
-            Error::HandlebarsTemplateFileError (_) => 10, 
+            Error::ProfileAlreadyExists (_) => 3, 
+            Error::NoShelfDatabase (_) => 4, 
+            Error::UnexportedShelfError (_) => 10,
+            Error::ShelfAlreadyExists (_) => 11, 
+            Error::DanglingSubjectError (_) => 12, 
+            Error::DatabaseError (_) => 12, 
+            Error::R2D2Error (_) => 20, 
+            Error::IoError (_) => 21, 
+            Error::ProcessError (_) => 22, 
+            Error::SerdeValueError (_) => 23, 
+            Error::HandlebarsRenderError (_) => 24, 
+            Error::HandlebarsTemplateError (_) => 24, 
+            Error::HandlebarsTemplateFileError (_) => 24, 
             _ => -1
         }
     }
@@ -80,7 +88,9 @@ impl fmt::Display for Error {
         match *self {
             Error::ValueError => write!(f, "Given value is not valid."), 
             Error::InvalidProfileError(ref path) => write!(f, "Profile at '{}' is not valid.", path.to_string_lossy()), 
+            Error::ProfileAlreadyExists(ref path) => write!(f, "Profile at '{}' already exists.", path.to_string_lossy()), 
             Error::NoShelfDatabase(ref path) => write!(f, "The shelf at path '{}' has no database for the operations.", path.to_str().unwrap()), 
+            Error::ShelfAlreadyExists(ref path) => write!(f, "The shelf at path '{}' already exists.", path.to_string_lossy()), 
             Error::UnexportedShelfError(ref path) => write!(f, "The shelf at path '{}' is not yet exported in the filesystem.", path.to_str().unwrap()), 
             Error::DanglingSubjectError(ref path) => write!(f, "The subject at path '{}' is missing", path.to_string_lossy()),
             Error::DatabaseError(ref err) => err.fmt(f), 

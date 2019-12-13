@@ -41,11 +41,11 @@ impl Shelf {
         Ok(notes_object)
     }
 
-    /// Checks if the shelf exists. 
+    /// Returns a shelf instance if the path is valid. 
     pub fn from (path: PathBuf) -> Result<Self> {
         let mut notes_object = Shelf { path, db: None };
 
-        if notes_object.is_valid() {
+        if !notes_object.is_valid() {
             return Err(Error::ValueError);
         }
 
@@ -161,11 +161,12 @@ impl Shelf {
     pub fn export(&mut self) -> Result<()> {
         let dir_builder = DirBuilder::new();
         
-        if !self.is_valid() {
-            helpers::filesystem::create_folder(&dir_builder, self.path())?;
+        if self.is_valid() {
+            return Err(Error::ShelfAlreadyExists(self.path()));
         }
-
-        if !self.use_db() {
+        
+        helpers::filesystem::create_folder(&dir_builder, self.path())?;
+        if !self.has_db_file() {
             self.db_backup()?;
             self.set_db_pool()?;
         }
@@ -617,7 +618,9 @@ mod tests {
     fn basic_note_usage() -> Result<()> {
         let note_path = PathBuf::from("./tests/notes");
         fs::remove_dir_all(&note_path);
-        let test_case: Shelf = Shelf::new(note_path, true)?;
+        let mut test_case: Shelf = Shelf::new(note_path, true)?;
+
+        assert!(test_case.export().is_ok());
 
         let test_subject_input = Subject::from_vec_loose(&vec!["Calculus", "Algebra"], &test_case)?;
         let test_note_input = Note::from_vec_loose(&vec!["Precalculus Quick Review", "Introduction to Integrations"], &test_subject_input[0], &test_case)?;
@@ -653,7 +656,9 @@ mod tests {
     fn subject_instances_test() -> Result<()> {
         let note_path = PathBuf::from("./tests/subjects");
         fs::remove_dir_all(&note_path);
-        let test_case: Shelf = Shelf::new(note_path, true)?;
+        let mut test_case: Shelf = Shelf::new(note_path, true)?;
+        
+        assert!(test_case.export().is_ok());
 
         let test_subject: Subject = Subject::new("Mathematics".to_string());
 
@@ -678,10 +683,18 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn invalid_note_location() {
+    fn invalid_note_export() {
         let note_path = PathBuf::from("./test/invalid/location/is/invalid");
-        let _test_case: Shelf = Shelf::new(note_path, false).unwrap();
+        let mut test_case: Shelf = Shelf::new(note_path, false).unwrap();
 
-        ()
+        assert!(test_case.export().is_ok());
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_note_import() {
+        let note_path = PathBuf::from("./this/is/invalid/note/location/it/does/not/exists/lol");
+        
+        assert!(Shelf::from(note_path).is_ok())
     }
 }
