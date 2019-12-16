@@ -9,6 +9,7 @@ use rusqlite;
 use r2d2;
 use serde_json;
 use handlebars;
+use globwalk;
 
 /// An enum for errors possible to happen in the Texture Notes library. 
 #[derive(Debug)]
@@ -56,6 +57,9 @@ pub enum Error {
 
     /// Related erros for r2d2. 
     R2D2Error(r2d2::Error), 
+
+    /// Given when the glob pattern is not recognizable. 
+    GlobParsingError(globwalk::GlobError), 
 }
 
 impl From<&Error> for i32 {
@@ -76,6 +80,7 @@ impl From<&Error> for i32 {
             Error::HandlebarsRenderError (_) => 24, 
             Error::HandlebarsTemplateError (_) => 24, 
             Error::HandlebarsTemplateFileError (_) => 24, 
+            Error::GlobParsingError (_) => 50, 
             _ => -1
         }
     }
@@ -102,6 +107,7 @@ impl fmt::Display for Error {
             Error::HandlebarsTemplateFileError(ref p) => write!(f, "Handlebars with the instance '{}' has an error occurred.", p),
             Error::HandlebarsRenderError(ref p) => write!(f, "{}: Error occurred while rendering.", p),
             Error::R2D2Error(ref error) => error.fmt(f), 
+            Error::GlobParsingError(ref error) => error.fmt(f), 
         }
     }
 }

@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS notes_index ON notes(title, subject_id);
 pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 12pt]{{standalone}}
 
 % document metadata
-\author{ {{~author~}} }
+\author{ {{~name~}} }
 \title{ {{~title~}} }
 \date{ {{~date~}} }
 
@@ -64,7 +64,7 @@ pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, cr
 pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
 
 % document metadata
-\author{ {{~author~}} }
+\author{ {{~name~}} }
 \title{ {{~title~}} }
 \date{ {{~date~}} }
 
