@@ -7,6 +7,7 @@ use r2d2;
 use r2d2_sqlite;
 use chrono::{ self };
 use serde_json;
+use globwalk;
 
 use crate::consts;
 use crate::helpers;
@@ -18,6 +19,62 @@ use crate::Result;
 // it is better to anotate them for explicit intentions
 const DB_NAME: &str = "notes.db";
 
+/// A struct holding the common export options. 
+#[derive(Debug, Clone)]
+pub struct ExportOptions {
+    with_metadata: bool, 
+    strict: bool, 
+    include_in_db: bool, 
+    with_db: bool, 
+}
+
+impl ExportOptions {
+    /// Creates a new instance of the export options. 
+    /// By default, all of the options are set to false. 
+    pub fn new() -> Self {
+        Self {
+            /// This is used for exporting subjects. 
+            with_metadata: false, 
+            
+            /// This is used for exporting items to the filesystem. 
+            /// If the item already exists, it will cause an error. 
+            strict: false, 
+
+            /// This is used when creating/including the items in the database. 
+            include_in_db: false, 
+
+            /// If set to true, the shelf will have a database. 
+            with_db: false, 
+        }
+    }
+
+    /// Sets the export to include metadata. 
+    /// This is used when exporting subjects. 
+    pub fn with_metadata(&mut self, with_metadata: bool) -> &mut Self {
+        self.with_metadata = with_metadata;
+        self
+    }
+
+    /// Sets the strictness of the export. 
+    /// This is used when including the items (e.g., subjects, notes) in the database during the creation process. 
+    pub fn strict(&mut self, strict: bool) -> &mut Self {
+        self.strict = strict;
+        self
+    }
+
+    /// Sets when including the items in the database. 
+    pub fn include_in_db(&mut self, include_in_db: bool) -> &mut Self {
+        self.include_in_db = include_in_db;
+        self
+    }
+
+    /// Sets `ExportOptions.with_db` with the given boolean value. 
+    pub fn with_db(&mut self, with_db: bool) -> &mut Self {
+        self.with_db = with_db;
+        self
+    }
+}
+
 /// The shelf is where it contains the subjects and its notes. 
 /// 
 /// It is where the major operations on the database occur. 
@@ -27,21 +84,69 @@ pub struct Shelf {
     db: Option<r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>>, 
 }
 
-impl Shelf {
-    /// Create a new shelf instance and immediately being created in the filesystem. 
-    /// 
-    /// If you want to import a shelf instance from the filesystem, use `Shelf::from`. 
-    pub fn new (path: PathBuf, use_database: bool) -> Result<Self> {
-        let mut notes_object = Shelf { path, db: None };
+/// A builder for the shelf instance. 
+/// Setting the data does not take the ownership (or consume) the builder to enable dynamic setting. 
+#[derive(Debug, Clone)]
+pub struct ShelfBuilder {
+    use_db: bool, 
+    path: Option<PathBuf>, 
+}
 
-        if use_database {
-            notes_object.set_db_pool_in_memory()?;
+impl ShelfBuilder {
+    /// Create a new shelf builder instance.
+    pub fn new() -> Self {
+        Self {
+            use_db: false, 
+            path: None,
         }
-
-        Ok(notes_object)
     }
 
-    /// Returns a shelf instance if the path is valid. 
+    /// Sets the value for the `set_db` field.
+    pub fn use_db(&mut self, use_db: bool) -> &mut Self {
+        self.use_db = use_db;
+        self
+    }
+
+    /// Sets the path of the shelf. 
+    pub fn path<P>(&mut self, path: P) -> &mut Self 
+        where 
+            P: AsRef<Path>
+    {
+        let path = path.as_ref().to_path_buf();
+        self.path = Some(path);
+
+        self
+    }
+
+    /// Create the shelf instance from the builder. 
+    /// Also consumes the builder. 
+    pub fn build(self) -> Result<Shelf> {
+        let mut shelf = Shelf::new();
+
+        if self.path.is_some() {
+            let path = self.path.unwrap();
+            
+            shelf.set_path(path)?;
+        }
+
+        if self.use_db {
+            shelf.set_db_pool_in_memory()?;
+        }
+
+        Ok(shelf)
+    }
+}
+
+impl Shelf {
+    /// Create a new shelf instance. 
+    pub fn new() -> Self {
+        Self {
+            path: PathBuf::new(), 
+            db: None
+        }
+    }
+
+    /// Creates a shelf instance from the filesystem. 
     pub fn from (path: PathBuf) -> Result<Self> {
         let mut notes_object = Shelf { path, db: None };
 
@@ -69,11 +174,11 @@ impl Shelf {
         let old_path = self.path();
         let new_path = to.as_ref().to_path_buf();
 
-        self.path = new_path;
-
         if self.is_exported() {
-            fs::rename(&old_path, &self.path).map_err(Error::IoError)?;
+            fs::rename(&old_path, &new_path).map_err(Error::IoError)?;
         }
+
+        self.path = new_path;
 
         Ok(old_path)
     }
@@ -128,6 +233,18 @@ impl Shelf {
         Ok(())
     }
 
+    /// Removes the database from the shelf instance. 
+    /// It will also delete the database file in the filesystem. 
+    fn remove_db(&mut self) -> Result<()> {
+        if self.has_db_file() {
+            fs::remove_file(self.db_path()).map_err(Error::IoError)?;
+        }
+        
+        self.db = None;
+
+        Ok(())
+    }
+
     /// Create a connection from the shelf database (if it has any). 
     /// This is mainly for using the database in multiple threads since Rusqlite (and the nature of Rust) does not allow it. 
     /// See [rusqlite issue #188](https://github.com/jgallagher/rusqlite/issues/188) for more information on the topic of SQLite thread safety. 
@@ -158,7 +275,7 @@ impl Shelf {
     /// Exports the shelf in the filesystem. 
     /// If the shelf has a database, it will also export subjects at the filesystem. 
     /// However, notes are not exported due to needing a dynamic output. 
-    pub fn export(&mut self) -> Result<()> {
+    pub fn export(&mut self, export_options: &ExportOptions) -> Result<()> {
         let dir_builder = DirBuilder::new();
         
         if self.is_valid() {
@@ -166,15 +283,17 @@ impl Shelf {
         }
         
         helpers::filesystem::create_folder(&dir_builder, self.path())?;
-        if !self.has_db_file() {
+        if !self.has_db_file() && self.use_db() {
             self.db_backup()?;
             self.set_db_pool()?;
         }
 
-        let subjects = self.get_all_subjects_from_db(None)?;
-        for subject in subjects {
-            if !subject.is_path_exists(&self) {
-                subject.export(&self)?;
+        if self.use_db() {
+            let subjects = self.get_all_subjects_from_db(None)?;
+            for subject in subjects {
+                if !subject.is_path_exists(&self) {
+                    subject.export(&self, export_options.with_metadata)?;
+                }
             }
         }
 
@@ -349,8 +468,7 @@ impl Shelf {
     pub fn create_subjects(
         &self, 
         subjects: &Vec<Subject>, 
-        add_to_db: bool, 
-        strict: bool, 
+        export_options: &ExportOptions
     ) -> Result<Vec<Subject>> {
         let mut valid_subjects: Vec<Subject> = vec![];
 
@@ -358,9 +476,9 @@ impl Shelf {
             // a subject that already exists in the shelf is considered to be "created"
             // this is for considering when the already existing subject is considered to be added in the shelf database
             // though, an available strict mode is made for that case
-            let ok_status = subject.export(&self).is_ok() || (subject.is_valid(&self) && !strict);
+            let ok_status = subject.export(&self, export_options.with_metadata).is_ok() || (subject.is_valid(&self) && !export_options.strict);
             
-            if ok_status && add_to_db {
+            if self.use_db() && ok_status && export_options.include_in_db {
                 match self.create_subject_entry(&subject).err() {
                     Some(e) => match e {
                         Error::NoShelfDatabase (path) => return Err(Error::NoShelfDatabase(path)), 
@@ -412,7 +530,7 @@ impl Shelf {
         Ok(valid_subjects)
     }
 
-    fn delete_subject_entry (&self, subject: &Subject) -> Result<usize> {
+    pub fn delete_subject_entry (&self, subject: &Subject) -> Result<usize> {
         let db_conn = self.open_db()?;
         let mut delete_subject_stmt = db_conn.prepare("DELETE FROM subjects WHERE name == ?").map_err(Error::DatabaseError)?;
 
@@ -436,6 +554,29 @@ impl Shelf {
         }
 
         Ok(valid_notes)
+    }
+
+    /// Get the notes in the shelf filesystem. 
+    pub fn get_notes_in_fs(&self, subject: &Subject) -> Result<Vec<Note>> {
+        let mut notes: Vec<Note> = vec![];
+
+        let subject_path = subject.path_in_shelf(&self);
+
+        let tex_files = globwalk::GlobWalkerBuilder::new(subject_path, "*.tex").build().map_err(Error::GlobParsingError)?;
+
+        for file in tex_files {
+            if let Ok(file) = file {
+                let note_path = file.path();
+
+                let file_stem = note_path.file_stem().unwrap().to_string_lossy();
+
+                let note_instance = Note::from(file_stem, &subject, &self)?.unwrap();
+
+                notes.push(note_instance);
+            }
+        }
+        
+        Ok(notes)
     }
 
     /// Returns the associated note instances from the database with its ID. 
@@ -529,12 +670,11 @@ impl Shelf {
         subject: &Subject, 
         note: &Note, 
         value: &str, 
-        add_to_db: bool, 
-        strict: bool, 
+        export_options: &ExportOptions,
     ) -> Result<()> {
-        let ok_status = note.export(&subject, &self, &value).is_ok() || (subject.is_valid(&self) && !strict);
+        let ok_status = note.export(&subject, &self, &value).is_ok() || (subject.is_valid(&self) && !export_options.strict);
 
-        if ok_status && add_to_db {
+        if ok_status && export_options.include_in_db {
             self.create_note_entry(&subject, &note)?;
         }
 
@@ -547,13 +687,12 @@ impl Shelf {
         subject: &Subject, 
         notes: &Vec<Note>, 
         value: &str, 
-        add_to_db: bool, 
-        strict: bool, 
+        export_options: &ExportOptions,
     ) -> Result<Vec<Note>> {
         let mut valid_notes: Vec<Note> = vec![];
 
         for note in notes.iter() {
-            if self.create_note(&subject, &note, &value, add_to_db, strict).is_ok() {
+            if self.create_note(&subject, &note, &value, &export_options).is_ok() {
                 valid_notes.push(note.clone());
             }
         }
@@ -562,7 +701,7 @@ impl Shelf {
     }
 
     /// Create a note entry in the shelf database. 
-    fn create_note_entry (&self, subject: &Subject, note: &Note) -> Result<i64> {
+    pub fn create_note_entry (&self, subject: &Subject, note: &Note) -> Result<i64> {
         let db_conn = self.open_db()?;
         let mut insert_note_stmt = db_conn.prepare("INSERT INTO notes (subject_id, title, slug) VALUES (?, ?, ?)").map_err(Error::DatabaseError)?;
 
@@ -596,7 +735,7 @@ impl Shelf {
         Ok(valid_notes)
     }
 
-    fn delete_note_entry (&self, subject: &Subject, note: &Note) -> Result<usize> {
+    pub fn delete_note_entry (&self, subject: &Subject, note: &Note) -> Result<usize> {
         let note_id = match self.get_note_id(&subject, &note)? {
             Some(v) => v, 
             None => return Err(Error::ValueError), 
@@ -616,35 +755,43 @@ mod tests {
 
     #[test]
     fn basic_note_usage() -> Result<()> {
-        let note_path = PathBuf::from("./tests/notes");
+        let note_path = PathBuf::from("tests/notes");
         fs::remove_dir_all(&note_path);
-        let mut test_case: Shelf = Shelf::new(note_path, true)?;
+        let mut test_case_builder = ShelfBuilder::new();
+        test_case_builder.path(note_path).use_db(true);
+        let mut test_case = test_case_builder.build()?;
 
-        assert!(test_case.export().is_ok());
+        let mut export_options = ExportOptions::new();
+        export_options.include_in_db(true).with_metadata(true);
+
+        assert!(test_case.export(&export_options).is_ok());
 
         let test_subject_input = Subject::from_vec_loose(&vec!["Calculus", "Algebra"], &test_case)?;
-        let test_note_input = Note::from_vec_loose(&vec!["Precalculus Quick Review", "Introduction to Integrations"], &test_subject_input[0], &test_case)?;
+        let test_note_input = Note::from_vec_loose(&vec!["Precalculus Quick Review", "Introduction to Integrations", "Introduction to Limits"], &test_subject_input[0], &test_case)?;
 
-        let created_subjects = test_case.create_subjects(&test_subject_input, true, false)?;
+        let created_subjects = test_case.create_subjects(&test_subject_input, &export_options)?;
         assert_eq!(created_subjects.len(), 2);
 
-        let created_notes = test_case.create_notes(&test_subject_input[0], &test_note_input, consts::NOTE_TEMPLATE, true, false)?;
-        assert_eq!(created_notes.len(), 2);
+        let created_notes = test_case.create_notes(&test_subject_input[0], &test_note_input, consts::NOTE_TEMPLATE, &export_options)?;
+        assert_eq!(created_notes.len(), 3);
 
         let available_subjects = test_case.get_subjects(&test_subject_input, true)?;
         assert_eq!(available_subjects.len(), 2);
 
         let available_notes = test_case.get_notes(&test_subject_input[0], &test_note_input, true)?;
-        assert_eq!(available_notes.len(), 2);
+        assert_eq!(available_notes.len(), 3);
 
         let all_available_subjects = test_case.get_all_subjects_from_db(None)?;
         assert_eq!(all_available_subjects.len(), 2);
 
         let all_available_notes = test_case.get_all_notes_by_subject_from_db(&test_subject_input[0], None)?;
-        assert_eq!(all_available_notes.len(), 2);
+        assert_eq!(all_available_notes.len(), 3);
+
+        let all_available_notes_from_fs = test_case.get_notes_in_fs(&test_subject_input[0])?;
+        assert_eq!(all_available_notes_from_fs.len(), 3);
 
         let deleted_notes = test_case.delete_notes(&test_subject_input[0], &test_note_input)?;
-        assert_eq!(deleted_notes.len(), 2);
+        assert_eq!(deleted_notes.len(), 3);
 
         let deleted_subjects = test_case.delete_subjects(&test_subject_input)?;
         assert_eq!(deleted_subjects.len(), 2);
@@ -654,11 +801,17 @@ mod tests {
 
     #[test]
     fn subject_instances_test() -> Result<()> {
-        let note_path = PathBuf::from("./tests/subjects");
+        let note_path = PathBuf::from("tests/subjects");
         fs::remove_dir_all(&note_path);
-        let mut test_case: Shelf = Shelf::new(note_path, true)?;
+        let mut test_case_builder = ShelfBuilder::new();
+        test_case_builder.path(note_path).use_db(true);
+
+        let mut test_case = test_case_builder.build()?;
+
+        let mut export_options: ExportOptions = ExportOptions::new();
+        export_options.include_in_db(true).with_metadata(true);
         
-        assert!(test_case.export().is_ok());
+        assert!(test_case.export(&export_options).is_ok());
 
         let test_subject: Subject = Subject::new("Mathematics".to_string());
 
@@ -666,13 +819,13 @@ mod tests {
         assert_eq!(test_subject.is_entry_exists(&test_case)?, false);
         assert_eq!(test_subject.is_sync(&test_case), false);
 
-        test_subject.export(&test_case)?;
+        test_subject.export(&test_case, export_options.with_metadata)?;
 
         assert_eq!(test_subject.is_valid(&test_case), true);
         assert_eq!(test_subject.is_path_exists(&test_case), true);
         assert_eq!(test_subject.is_entry_exists(&test_case)?, false);
 
-        test_case.create_subjects(&vec![test_subject.clone()], true, false)?;
+        test_case.create_subjects(&vec![test_subject.clone()], &export_options)?;
 
         assert_eq!(test_subject.is_valid(&test_case), true);
         assert_eq!(test_subject.is_path_exists(&test_case), true);
@@ -685,9 +838,12 @@ mod tests {
     #[should_panic]
     fn invalid_note_export() {
         let note_path = PathBuf::from("./test/invalid/location/is/invalid");
-        let mut test_case: Shelf = Shelf::new(note_path, false).unwrap();
+        let mut test_case_builder = ShelfBuilder::new();
+        test_case_builder.path(note_path).use_db(false);
+        
+        let mut test_case = test_case_builder.build().unwrap();
 
-        assert!(test_case.export().is_ok());
+        assert!(test_case.export(&ExportOptions::new()).is_ok());
     }
 
     #[test]

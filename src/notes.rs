@@ -37,17 +37,19 @@ impl Subject {
     /// Create a subject instance from a given notes instance. 
     /// If the path is a valid subject folder, it will set the appropriate data from the metadata file and return with an `Option` field. 
     pub fn from (name: &str, notes: &Shelf) -> Result<Option<Self>, Error> {
-        let subject = Subject::new(name.to_string());
+        let mut subject = Subject::new(name.to_string());
         
         if !subject.is_valid(&notes) {
             return Ok(None)
         }
 
-        let metadata_path = subject.metadata_path_in_shelf(&notes);
-        let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
-        
-        let subject: Subject = serde_json::from_str(&metadata).map_err(Error::SerdeValueError)?;
-        
+        if subject.has_metadata_file(&notes) {
+            let metadata_path = subject.metadata_path_in_shelf(&notes);
+            let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
+            
+            subject = serde_json::from_str(&metadata).map_err(Error::SerdeValueError)?;
+        }
+
         Ok(Some(subject))
     }
     
@@ -89,13 +91,13 @@ impl Subject {
     }
 
     /// Returns the modification datetime of the folder as a `chrono::DateTime` instance. 
-    pub fn datetime_modified (&self, notes: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
+    pub fn datetime_modified (&self, notes: &Shelf) -> Result<chrono::DateTime<chrono::Utc>, Error> {
         match self.is_path_exists(&notes) {
             true => {
                 let metadata = fs::metadata(self.path_in_shelf(&notes)).map_err(Error::IoError)?;
                 let modification_systemtime = metadata.modified().map_err(Error::IoError)?;
 
-                Ok(chrono::DateTime::<chrono::Local>::from(modification_systemtime))
+                Ok(chrono::DateTime::<chrono::Utc>::from(modification_systemtime))
             }, 
             false => Err(Error::IoError(io::Error::from(io::ErrorKind::Other))) 
         }
@@ -131,8 +133,13 @@ impl Subject {
         path
     }
 
+    /// Checks if the metadata file exists in the shelf.  
+    pub fn has_metadata_file(&self, shelf: &Shelf) -> bool {
+        self.metadata_path_in_shelf(&shelf).is_file()
+    }
+
     /// Exports the instance in the filesystem. 
-    pub fn export(&self, notes: &Shelf) -> Result<(), Error> {
+    pub fn export(&self, notes: &Shelf, with_metadata: bool) -> Result<(), Error> {
         if !notes.is_exported() {
             return Err(Error::UnexportedShelfError(notes.path()));
         }
@@ -142,9 +149,11 @@ impl Subject {
         
         helpers::filesystem::create_folder(&dir_builder, &path)?;
         
-        let metadata_path = self.metadata_path_in_shelf(&notes);
-        let mut metadata_file = OpenOptions::new().create_new(true).write(true).open(metadata_path).map_err(Error::IoError)?;
-        metadata_file.write(serde_json::to_string_pretty(&self).map_err(Error::SerdeValueError)?.as_bytes()).map_err(Error::IoError)?;
+        if with_metadata {
+            let metadata_path = self.metadata_path_in_shelf(&notes);
+            let mut metadata_file = OpenOptions::new().create_new(true).write(true).open(metadata_path).map_err(Error::IoError)?;
+            metadata_file.write(serde_json::to_string_pretty(&self).map_err(Error::SerdeValueError)?.as_bytes()).map_err(Error::IoError)?;
+        }
 
         Ok(())
     }
@@ -158,12 +167,12 @@ impl Subject {
 
     /// Checks if the associated path exists from the shelf. 
     pub fn is_path_exists (&self, notes: &Shelf) -> bool {
-        self.path_in_shelf(&notes).exists()
+        self.path_in_shelf(&notes).is_dir()
     }
 
     /// Checks if the subject has a valid folder structure from the shelf. 
     pub fn is_valid (&self, notes: &Shelf) -> bool {
-        self.metadata_path_in_shelf(&notes).is_file()
+        self.is_path_exists(&notes)
     }
     
     /// Checks if the subject instance has an entry in the shelf database. 
@@ -182,6 +191,30 @@ impl Subject {
             Ok(v) => v, 
             Err(_e) => false
         }
+    }
+
+    /// Returns the valid subjects in the shelf filesystem sorted by the modification datetime. 
+    pub fn sort_by_date(shelf: &Shelf, subjects: &Vec<Subject>) -> Vec<Subject> {
+        if !shelf.is_valid() {
+            return vec![];
+        }
+
+        let mut valid_subjects: Vec<Subject> = subjects.iter().filter(| subject | subject.is_valid(&shelf)).cloned().collect();
+
+        valid_subjects.sort_unstable_by(| a, b | {
+            let a = match a.datetime_modified(&shelf) {
+                Ok(v) => v, 
+                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0), 
+            };
+            let b = match b.datetime_modified(&shelf) {
+                Ok(v) => v, 
+                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0), 
+            };
+
+            a.partial_cmp(&b).unwrap()
+        });
+
+        valid_subjects
     }
 }
 
@@ -209,7 +242,8 @@ impl Note {
     /// 
     /// This only checks whether the associated path of the note exists. 
     /// To check if the note exists on the notes database, call the `Note::is_entry_exists` method. 
-    pub fn from (title: &str, subject: &Subject, notes: &Shelf) -> Result<Option<Self>, Error> {
+    pub fn from<S: AsRef<str>>(title: S, subject: &Subject, notes: &Shelf) -> Result<Option<Self>, Error> {
+        let title = title.as_ref();
         let note = Note::new(title.to_string());
 
         match note.is_path_exists(&subject, &notes) {
@@ -256,13 +290,13 @@ impl Note {
     }
 
     /// Returns the modification datetime of the note file in the shelf filesystem as a `chrono::DateTime` instance.
-    pub fn datetime_modified (&self, subject: &Subject, shelf: &Shelf) -> Result<chrono::DateTime<chrono::Local>, Error> {
+    pub fn datetime_modified (&self, subject: &Subject, shelf: &Shelf) -> Result<chrono::DateTime<chrono::Utc>, Error> {
         match self.is_path_exists(&subject, &shelf) {
             true => {
                 let metadata = fs::metadata(self.path_in_shelf(&subject, &shelf)).map_err(Error::IoError)?;
                 let modification_time = metadata.modified().map_err(Error::IoError)?;
 
-                Ok(chrono::DateTime::<chrono::Local>::from(modification_time))
+                Ok(chrono::DateTime::<chrono::Utc>::from(modification_time))
             }, 
             false => Err(Error::IoError(io::Error::from(io::ErrorKind::NotFound)))
         }
@@ -348,5 +382,29 @@ impl Note {
             Ok(v) => v, 
             Err(_e) => false, 
         }
+    }
+
+    /// Returns all of the notes that are in the shelf filesystem sorted by its modification datetime. 
+    pub fn sort_by_date(shelf: &Shelf, subject: &Subject, notes: &Vec<Note>) -> Vec<Note> {
+        if !subject.is_path_exists(&shelf) {
+            return vec![];
+        }
+
+        let mut valid_notes: Vec<Note> = notes.iter().filter(| note | note.is_path_exists(&subject, &shelf)).cloned().collect();
+
+        valid_notes.sort_unstable_by(| a, b | {
+            let a: chrono::DateTime<chrono::Utc> = match a.datetime_modified(&subject, &shelf) {
+                Ok(v) => v, 
+                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0), 
+            };
+            let b = match b.datetime_modified(&subject, &shelf) {
+                Ok(v) => v, 
+                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0), 
+            };
+
+            a.partial_cmp(&b).unwrap()
+        });
+        
+        valid_notes
     }
 }

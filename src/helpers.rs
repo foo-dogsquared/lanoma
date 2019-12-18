@@ -42,7 +42,7 @@ pub mod string {
 pub mod filesystem {
     use std::fs::{ self, DirBuilder };
     use std::os;
-    use std::path::{ self, Path, PathBuf };
+    use std::path::{ self, Path, PathBuf, Component };
 
     use crate::error::Error;
 
@@ -171,6 +171,37 @@ pub mod filesystem {
             }
 
             Some(common_components.iter().map(|c| c.as_os_str()).collect())
+        }
+    }
+
+    /// Normalize the given path. 
+    /// Unlike the standard library `std::fs::canonicalize` function, it does not need the file to be in the filesystem. 
+    /// 
+    /// That said, this leaves compromise the implementation to be very naive. 
+    /// All resulting path will be based on the current directory. 
+    /// 
+    /// If the resulting normalized path is empty, 
+    pub fn naively_normalize_path<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
+        let path = path.as_ref();
+
+        let mut normalized_components = vec![];
+
+        for component in path.components() {
+            match &component {
+                Component::CurDir => continue, 
+                Component::ParentDir => { normalized_components.pop(); () }, 
+                _ => normalized_components.push(component),
+            }
+        }
+
+        let mut normalized_path = PathBuf::new();
+        for component in normalized_components {
+            normalized_path.push(component.as_os_str());
+        }
+
+        match normalized_path.to_string_lossy().is_empty() {
+            true => None, 
+            false => Some(normalized_path), 
         }
     }
 }
