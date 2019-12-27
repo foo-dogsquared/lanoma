@@ -1,56 +1,11 @@
-pub const TEXTURE_NOTES_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const TEXTURE_NOTES_DIR_NAME: &str = "texture-notes-profile";
-
-pub const SQLITE_SCHEMA: &str = "PRAGMA foreign_key = ON;
-
-CREATE TABLE IF NOT EXISTS subjects (
-    id INTEGER,
-    name TEXT UNIQUE NOT NULL,
-    slug TEXT UNIQUE NOT NULL, 
-    PRIMARY KEY(id),
-    CHECK(
-        TYPEOF(name) == 'text' AND
-        LENGTH(name) <= 128 
-    )
-);
-
-CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER,
-    title TEXT NOT NULL,
-    slug TEXT NOT NULL, 
-    subject_id INTEGER NOT NULL,
-    PRIMARY KEY(id),
-    FOREIGN KEY(subject_id) REFERENCES subjects(id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CHECK (
-        -- checking if the title is a string with less than 512 characters
-        TYPEOF(title) == 'text' AND
-        LENGTH(title) <= 256 AND
-        LOWER(title) NOT IN ('main', 'graphics') 
-    )
-);
-
-CREATE TRIGGER IF NOT EXISTS unique_filename_note_check BEFORE INSERT ON notes 
-BEGIN
-    SELECT 
-    CASE 
-        WHEN (SELECT COUNT(slug) FROM notes WHERE subject_id == NEW.subject_id AND slug == NEW.slug) >= 1 
-            THEN RAISE(FAIL, \"There's already a note with the filename under the specified subject.\")
-        WHEN (SELECT COUNT(title) FROM notes WHERE subject_id == NEW.subject_id AND title == NEW.title) >= 1 
-            THEN RAISE(FAIL, \"There's already a note with the same title under the specified subject.\")
-    END;
-END;
-
--- creating an index for the notes
-CREATE INDEX IF NOT EXISTS notes_index ON notes(title, subject_id);
-";
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 12pt]{{standalone}}
 
 % document metadata
 \author{ {{~name~}} }
-\title{ {{~title~}} }
+\title{ {{~note.title~}} }
 \date{ {{~date~}} }
 
 \begin{{document}}
@@ -65,10 +20,12 @@ pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=fals
 
 % document metadata
 \author{ {{~name~}} }
-\title{ {{~title~}} }
+\title{ {{~note.title~}} }
 \date{ {{~date~}} }
 
 \begin{document}
+Sample content.
 
+{{subject.name}}
 \end{document}
 ";
