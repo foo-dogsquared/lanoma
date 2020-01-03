@@ -5,8 +5,8 @@ language: rust
 rust:
   - stable
 env:
-  - RUST_BACKTRACE: full
-  - PROJECT_NAME: texture-notes
+  RUST_BACKTRACE: full
+  PROJECT_NAME: texture-notes
 cache: cargo
 
 # For now, it only support the operating systems I always get to use. 
@@ -27,7 +27,12 @@ matrix:
       env: TARGET=i686-pc-windows-gnu
 
 # Installing all of the required dependencies for packaging the program.
-install: ci/install.sh
+install: 
+  - ls --recursive
+  - pwd
+  - chmod +x ci/install.sh
+  - chmod +x ci/texlive/texlive-install.sh
+  - ci/install.sh
 before_script:
   - gem install asciidoctor
 script:

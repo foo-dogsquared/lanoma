@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
 package_executable() {
     local temp_dir=$(mktemp -d)
