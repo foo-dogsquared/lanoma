@@ -1,4 +1,5 @@
 = Texture Notes 
+:toc:
 
 A lecture notes manager that aims for self-studying and university classes footnote:[Mainly, the author of this program, https://github.com/foo-dogsquared[@foo-dogsquared].]. 
 It is mainly composed of a command line program where you can easily manage your LaTeX notes. 
@@ -19,7 +20,9 @@ Nonetheless, pull requests for improvements are always welcome!
 While creating this program, I have certain objectives to attain. 
 Setting up and openly stating the objectives can make you learn the strengths and limitations of the program. 
 
-* Create a reusable LaTeX notes setup instead of specifically crafting one for every book. 
+* Create a reusable LaTeX notes setup instead of specifically crafting one for every book/notes I make. 
+
+* Create a LaTeX document setup that can easily transfer/move to other setups.
 
 * Create a personal knowledge base (made with LaTeX documents) that is easily searchable and retrievable. 
 
@@ -40,6 +43,8 @@ Now the objectives are out, let's explicitly lay out the expected limitations of
 
 * First and foremost, it's a niche tool for a **very** niche use. 
 Also, with the use of makefiles and shell scripts, you can easily set up a compilation workflow for your LaTeX documents. 
+Besides, creating a similar tool could've been easier (and better) with shell scripts and makefiles. 
+I just did to myself because I want to learn Rust. 
 
 * If we're talking about personal knowledge bases, linking between concepts similar to a mind map is not possible. 
 For me, it's suitable to think more of a https://en.wikipedia.org/wiki/Tree_%28data_structure%29[tree] rather than a https://en.wikipedia.org/wiki/Graph_(data_structure)[graph]. 
@@ -63,6 +68,20 @@ You can then search for your files with the `find` command.
 
 
 
+== Installation 
+
+You can simply download the https://github.com/foo-dogsquared/texture-notes-v2/releases[provided binaries in the releases page]. 
+If you're using https://doc.rust-lang.org/cargo/[Cargo], you can install the binary with https://doc.rust-lang.org/cargo/commands/cargo-install.html?highlight=install#cargo-install[`cargo install` command]. 
+
+If there's no available version for your operating system of choice, you can compile one yourself. 
+
+First, make sure you have the Rust toolchain installed. 
+Then clone the Git repository into your machine and build the executable with `cargo build`. 
+footnote:[You can also build with `make` by using the `build` rule (i.e., `make build`).]
+
+
+
+
 == Usage 
 
 For now (or maybe not), this program is specifically made for my LaTeX workflow. 
@@ -75,17 +94,18 @@ In order to make use of this application, you need to have the following program
 
 === Quick start 
 
-To prevent getting a mess, Texture Notes needs a profile which is located in a folder named `texture-notes-profile`. 
+To get started with Texture Notes, you need a profile. 
 
 You can simply create a profile with the `init` command. 
 
 [source, shell]
 ----
-# Initialize the profile in the current directory 
+# Initialize the profile in the respective config folder of your operating system 
 texture-notes-v2 init
 
-# Initialize the profile in the other directory 
-texture-notes-v2 init --target "~/Documents"
+# Initialize the profile in other directories if you don't want to. 
+# Though, you have to specify the profile at every command. 
+texture-notes-v2 init --profile "~/Documents"
 ----
 
 Once you have initialized a profile, you can now create subjects and notes. 
@@ -99,14 +119,6 @@ texture-notes-v2 add subjects "Mathematics" "Science"
 # After adding some subjects, you can add some notes 
 texture-notes-v2 add notes "Mathematics" "Introduction to Calculus" 
 
-# You can then write/fill up the note
-# To quickly open a note, just run the following command 
-texture-notes-v2 open notes "Mathematics" "Introduction to Calculus"
-
-# You can also refer to the note ID instead for convenience 
-# Assuming the note has an ID of 1
-texture-notes-v2 open notes-id 1 
-
 # To compile all notes under "Mathematics" 
 texture-notes-v2 compile subjects "Mathematics"
 ----
@@ -117,7 +129,6 @@ texture-notes-v2 compile subjects "Mathematics"
 == Architecture 
 
 Texture Notes v2 uses Rust for building the core and command line interface. 
-It also use https://sqlite.org/index.html[SQLite] for the database. 
 
 A Texture Notes profile is composed of the profile input, notes, templates, and common files for customizable options. 
 The note manager also enforces a specific folder structure with the data. 
@@ -148,10 +159,11 @@ As a user of multiple OS (i.e., Windows and Linux), I really like to make this p
 
 == Development 
 
-The application is still in active development (though as a side project, mind you). 
+The application is still in active development. 
+Though it is just a side project, contributions are welcome with open arms:  refactoring code, improving the documentations, filing an issue, and the like. :)
 
 To set up for development, you just need https://www.rust-lang.org/[Rust] installed. 
-If you haven't installed it yet, https://www.rust-lang.org/tools/install[be sure to follow the instructions]. 
+If you haven't installed it yet, https://www.rust-lang.org/tools/install[be sure to follow the instructions from the official website]. 
 
 The project uses https://github.com/rust-lang/cargo[Cargo] for managing the project. 
 
@@ -162,3 +174,6 @@ To add command line arguments, just append two dashes (`--`) after the run comma
 
 * Using the https://github.com/rust-lang/rls[RLS] plugin of your text editor of choice is recommended. 
 If you're using https://code.visualstudio.com/[Visual Studio Code], it is fully recommended to have it installed. 
+
+This project also makes use of the official toolchain of Rust such as https://github.com/rust-lang/rustfmt[rustfmt]. 
+If you haven't installed rustfmt yet, please refer to the link and read the documentation on installing. 

@@ -1,0 +1,265 @@
+= texture-notes(1)
+Gabriel Arazas
+2019-12-31
+:doctype: manpage
+:manmanual: Texture Notes Manual
+:mansource: Texture Notes v2.0.0
+:man-linkstyle: pass:[red R < >]
+
+:default-template-name: _default
+
+
+
+
+== Name 
+
+texture-notes - a note manager for LaTeX documents; inspired from Gilles Castel's LaTeX note management workflow post (https://castel.dev/post/lecture-notes-3/)
+
+
+
+
+== Sypnosis 
+
+*texture-notes* [_GLOBAL OPTIONS_] [_SUBCOMMAND_] [_SUBCOMMAND OPTIONS_] [_SUBCOMMAND ARGUMENT(S)_]
+
+
+
+
+== Global options 
+
+*-p, --profile*=[_PATH_]::
+The location of the profile. 
+By default, it is located on the default configuration folders of the operating system as defined by the https://crates.io/crates/directories[`directories` crate]. 
+
+*-s, --shelf*=[_PATH_]::
+The base directory. 
+By default, this is the current working directory. 
+
+
+
+
+== Subcommands 
+
+*init*::
+Initialize a profile. 
+
+*add*::
+Add a subject or a note. 
+
+*remove*::
+Remove a subject or a note. 
+
+*compile*::
+Compile a set of notes from a subject. 
+
+*help*::
+Print the help section of the subcommand or the application. 
+
+
+
+
+== User guide 
+
+
+=== Initializing and customizing a profile 
+
+To get started with Texture Notes, one will have to initialize a profile. 
+To initialize a profile, just run the `init` subcommand. 
+
+[source, shell]
+----
+texture-notes init
+----
+
+This initializes a profile at the default config folder of the operating system. 
+See the <<Default config locations>> appendix section for more details. 
+
+A profile contains the following data:
+
+* A profile metadata which is stored in `profile.toml`. 
+The TOML file should have the keys `name` and `version` along with the correct data types (i.e., string). 
+Custom keys can be added which is useful when creating note templates which will be discussed later in the manual. 
+
+* A set of templates in `templates` directory. 
+It is a key-value store with the name of the `.tex` files as the key. 
+
+
+=== Using Texture Notes 
+
+Now a profile is available, you can now create some subjects and notes in a directory referred to as the *base directory* or the *shelf*. 
+
+You can view the available subcommands at the <<Subcommands>> section. 
+Most of the subcommands for interacting with the shelf requires an inner subcommand indicating whether it's a subject or a note. 
+
+Here are some of the examples when using Texture Notes. 
+
+[source, shell]
+----
+texture-notes add subjects "Calculus I" "Calculus II"
+
+texture-notes compile notes "Calculus I" -- "Introduction to limits" "Taylor series"
+
+texture-notes remove subjects "Calculus II"
+----
+
+A *subject* in Texture Note is just a folder with a metadata file named `info.toml`. 
+It only needs a field called `name` with a string value. 
+
+For convenience, you can refer to the same subject as long as the resulting kebab-case string is the same. 
+
+For example, consider the following folder structure. 
+
+[source]
+----
+university
+├── year-1
+│   ├── semester-1
+│   │   ├── calculus-i
+│   │   │   ├── introduction-to-limitations.tex
+│   │   │   ├── taylor-series.tex
+│   │   │   └── info.toml
+│   │   ├── computer-design
+│   │   └── web-programming
+│   └── ...
+└── ...
+----
+
+You can refer to the Calculus I from the first year folder in different ways assuming the base directory starting from the `university` folder. 
+
+[source, shell]
+----
+texture-notes add notes "Year 1/Semester 1/Calculus I" --- NOTES...
+texture-notes add notes "year-1/semester-1/calculus-i" --- NOTES...
+----
+
+As long as the resulting kebab-case of each component in the path is the same, it is considered as the same subject. 
+For certain cases, this can be distinct when creating notes or the subject. 
+
+The same applies for referring to notes. 
+
+
+=== Note templates 
+
+Texture Notes has a simple templating system for your LaTeX documents. 
+As briefly mentioned, the templates are located in a profile specifically in the `templates/` folder. 
+
+Internally, the templates is represented as a key-value store. 
+The key-value store comes from the folder that expects a list of `.tex` files with the file name as the key. 
+
+The template also uses https://crates.io/crates/handlebars[a Rust implementation of Handlebars] as the templating language. 
+
+The template store primarily use the `{default-template-name}` template as the default. 
+It also has the following default content. 
+
+[source, latex]
+----
+\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
+
+% document metadata
+\author{ {{~name~}} }
+\title{ {{~note.title~}} }
+\date{ {{~date~}} }
+
+\begin{document}
+Sample content.
+
+{{subject.name}}
+\end{document}
+----
+
+To override the default template, just create `{default-template-name}.tex` on the templates folder. 
+
+As previously said, it uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
+To set dynamic values, a Handlebars expression delimited by two pairs of curly braces (`{{$EXPR}}`). 
+Practically in using Texture Notes, these are often used to refer to a https://github.com/toml-lang/toml[TOML] value. 
+
+When creating a note, a TOML table is forming from different sources such as the profile and subject metadata. 
+
+For example, let's create a note titled "Introduction to limits" under the subject "Calculus I". 
+Assuming the shelf is the current directory, the shell command would look like the following. 
+
+[source, shell]
+----
+texture-notes add notes "Calculus I" -- "Introduction to limits"
+----
+
+The following TOML table is then formed in the note creation process. 
+
+[source, toml]
+----
+name = "STUDENT_NAME"
+version = "VERSION"
+
+# The rest of the keys in `profile.toml`. 
+# ...
+
+[note]
+title = "Introduction to limits"
+file_name = "introduction-to-limits.tex"
+
+[subject]
+name = "Calculus I"
+# The rest of the keys in `info.toml` of the subject.
+----
+
+This is where setting custom keys can be handy. 
+If you want a globally applied data, you can add a few fields on the `profile.toml` in the profile directory. 
+For subject-specific data, you can add a `info.toml` and
+
+
+=== LaTeX documents compilation 
+
+Texture Notes can do basic automation of compiling LaTeX documents in parallel through threads. 
+
+This is mainly used with the `compile` subcommand. 
+
+[source, shell]
+----
+texture-notes compile notes "Calculus I" -- "Introduction to limits"
+----
+
+You can change the number of threads compiling the documents with the `--threadcount` option. 
+The default compilation process spawns four threads. 
+
+You can also change the default
+The default compilation command is `'latexmk -pdf {{note}}'`. 
+You can override the default command by setting the `command` key in the `profile.toml`. 
+Similar to note templates, the command template uses Handlebars. 
+The available fields for substituing is `note` which is the basically the resulting file name (e.g., "Introduction to calculus" to "introduction-to-calculus.tex"). 
+
+
+
+
+== Exit status 
+
+*0*::
+Successful termination. 
+
+*1*::
+General errors — e.g., invalid or nonexistent profile, TOML or Handlebars parsing error. 
+
+
+
+
+== Repository 
+
+Git repository::
+https://github.com/foo-dogsquared/texture-notes-v2
+
+Issue tracker::
+https://github.com/foo-dogsquared/texture-notes-v2/issues
+
+
+
+
+[appendix]
+== Default config locations
+
+By default, the profile location uses the config folder of the operating system. 
+
+* For Linux, the config folder is at `$XDG_CONFIG_HOME/texture-notes` or at `$HOME/.config/texture-notes`. 
+* For Windows, the configuration is stored at `%APPDATA%/texture-notes`. 
+* For MacOS, it is at `$HOME/Library/Preferences/texture-notes`. 
+
+Specifically, Texture Notes utilizes the https://crates.io/crates/directories[`directories` crate from crates.io]. 
+You can refer to the crates.io page for more details. 

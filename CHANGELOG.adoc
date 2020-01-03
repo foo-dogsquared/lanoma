@@ -11,13 +11,21 @@ and this project adheres to https://semver.org/spec/v2.0.0.html[Semantic Version
 
 === Added 
 
-* Add support for template files instead of storing in the configuration file. 
+* Support for template files instead of storing in the configuration file. 
 Custom templates are now possible by separating them in a dedicated folder. 
 For the sake of performance, it can only have support for top-level files. 
 Folder-based templates similar to https://github.com/gohugoio/hugo/[Hugo] archetypes is considered but it is tentative. 
 
-* Add an `init` command which really does nothing but it is useful for creating nonexistent profiles. 
-It's a feature, not an accident implementation, I swear. 
+* An `init` command for initializing profiles. 
+On a related note, if the resulting path is not valid, any commands will cause an error unless it is initialized first. 
+
+* Support for custom compiling commands. 
+
+* Add an optional metadata for the subjects through `info.toml`. 
+It is also used for the templates that makes use of the subject metadata. 
+
+* A user manual for the program. 
+It is created with an https://asciidoctor.org/[Asciidoctor] document. 
 
 
 === Changed 
@@ -36,18 +44,39 @@ This is due to the limitations of https://github.com/clap-rs/clap[`clap`].
 From this point, the binder is now referred to as the **shelf**. 
 ** Make the shelf system modular for easier maintenance. 
 ** A shelf is still composed of **subjects** (terminology may change in the future). 
-Though, with this system, it now compromises the ease of search for the notes. 
-** Change the dynamics of the shelf database to be more optional. 
-In the previous version, the database is an absolute must in order for the program to work. 
-Now, it accepts the paths as the main input. 
-The database is mainly for adding convenience such as referring to the subjects and notes by ID instead of its full path. 
+Each subject now requires a specific metadata file with required keys. 
+** Remove the database entirely. 
+Now, the binder system is entirely dependent of the filesystem. 
 
-// * Symlinks are dynamically generated at compilation time instead of statically created at creation time. 
-// This makes the data truly cross-compatible across multiple systems (as long as symlinks as supported, of course). 
+* Revise the profile system. 
+** The common files folder has been removed. 
+** Now, the profile and the shelf are no longer required to be on the same folder. 
+
+* Update the subject to be more path-like. 
+It is normalized similarly to a path. 
+It can also can be made into multiple path components instead of representing one subject. 
+This allows for more flexibility and intuition in interacting with the program. 
 
 * Templates support from https://docs.python.org/3/library/string.html#custom-string-formatting[Python template strings] to https://github.com/sunng87/handlebars-rust[Handlebars Rust implementation]. 
 
-* Restructure the profile directory structure for neater custom configurations. 
-** The styles folder have been changed to common files repository which makes more sense. 
-** The profile metadata filename has been changed to `profile.json`. 
-** Templates has been moved to its own folder at `templates/`. 
+* Restructure the profile directory structure for neater custom configurations and easier organization. 
+** The profile is instead stored with the respective config folder of the OS. 
+This allows Texture Notes to be simpler and modular. 
+Although, this sacrifices the multiple user aspect (though that's not needed at this point). 
+** The profile metadata filename has been changed to `.profile.toml`. 
+** Templates has been moved to its own folder at `.templates/`. 
+
+
+=== Removed
+
+* Remove the shelf database. 
+** The reason: I simply don't use it anymore. 
+It also adds complexity for a simple niche tool (that is also intended for learning Rust). 
+Overall, it's a waste of time and resources to dwell on it. 
+(Nevermind the problems that goes along with synchronizing and validating the database and the filesystem and all that.)
+** Along with the database, remove the global ID system for shelf items (e.g., notes, subjects). 
+** As a consequence of the removal, the `open` subcommand is also removed since it is a niche feature and only useful with the database. 
+
+* Remove the common files folder (`styles/`) in the profile. 
+(At this point, it's pointless though a cross-platform way of creating symbolic links would be nice.
+Maybe a `helpers` subcommand where various helper functions are called would be considered.) 
