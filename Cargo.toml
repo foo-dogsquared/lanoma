@@ -3,6 +3,8 @@ name = "texture-notes-v2"
 version = "2.0.0"
 authors = ["foo-dogsquared <foo.dogsquared@gmail.com>"]
 edition = "2018"
+default-run = "texture-notes"
+cargo-features = ["named-profiles"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,3 +22,12 @@ directories = "2.0.2"
 
 [dev-dependencies]
 tempfile = "3.1.0"
+
+[profile.release]
+opt-level = 'z'
+lto = true
+panic = 'abort'
+
+[[bin]]
+name = "texture-notes"
+path = "src/bin/main.rs"
