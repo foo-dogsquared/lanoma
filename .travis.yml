@@ -1,0 +1,42 @@
+# This configuration and the setup was based from ripgrep by Andrew Gallant (BurntSushi). 
+# https://github.com/BurntSushi/ripgrep
+
+language: rust
+rust:
+  - stable
+env:
+  - RUST_BACKTRACE: full
+  - PROJECT_NAME: texture-notes
+cache: cargo
+
+# For now, it only support the operating systems I always get to use. 
+matrix:
+  fast_finish: true
+  include:
+    - os: linux
+      env: TARGET=i686-unknown-linux-gnu
+    - os: linux
+      env: TARGET=x86_64-unknown-linux-gnu
+    - os: windows
+      env: TARGET=x86_64-pc-windows-gnu
+    - os: windows
+      env: TARGET=x86_64-pc-windows-msvc
+    - os: windows
+      env: TARGET=i686-pc-windows-msvc
+    - os: windows
+      env: TARGET=i686-pc-windows-gnu
+
+# Installing all of the required dependencies for packaging the program.
+install: ci/install.sh
+before_script:
+  - gem install asciidoctor
+script:
+  - make build
+
+before_deploy: ci/before_deploy.sh
+deploy:
+  provider: pages
+  file_glob: true
+  on:
+    tags: true
+    branch: master
