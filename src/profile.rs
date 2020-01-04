@@ -472,6 +472,57 @@ mod tests {
             .notes(test_notes.clone())
             .subject(test_subjects[0].clone())
             .thread_count(4);
+
+        assert!(Profile::from(profile_tmp_dir).is_ok());
+
+        Ok(())
+    }
+
+    #[ignore]
+    #[test]
+    fn basic_profile_usage_with_compilation_notes() -> Result<()> {
+        let (profile_tmp_dir, mut profile) = tmp_profile()?;
+        let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
+
+        let export_options = ExportOptions::new();
+
+        assert!(profile.export().is_ok());
+        assert!(shelf.export().is_ok());
+
+        let test_subjects =
+            Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Physics"], &shelf);
+        let test_notes = Note::from_vec_loose(
+            &vec![
+                "Introduction to Precalculus",
+                "Introduction to Integrations",
+                "Taylor Series",
+                "Introduction to Limits",
+                "Matrices and Markov Chains",
+            ],
+            &test_subjects[0],
+            &shelf,
+        )?;
+        let test_input = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
+
+        % document metadata
+        \author{ {{~author~}} }
+        \title{ {{~title~}} }
+        \date{ {{~date~}} }
+        
+        \begin{document}
+        This is a content sample.
+        \end{document}
+        ";
+
+        shelf.create_subjects(&test_subjects, &export_options);
+        shelf.create_notes(&test_subjects[0], &test_notes, test_input, &export_options);
+
+        let mut compilation_env = CompilationEnvironment::new();
+        compilation_env
+            .command(profile.compile_note_command())
+            .notes(test_notes.clone())
+            .subject(test_subjects[0].clone())
+            .thread_count(4);
         assert_eq!(compilation_env.compile(&shelf)?.len(), 5);
 
         assert!(Profile::from(profile_tmp_dir).is_ok());

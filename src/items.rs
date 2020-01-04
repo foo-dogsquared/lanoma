@@ -68,7 +68,6 @@ impl Subject {
         shelf: &Shelf,
     ) -> Result<Self, Error> {
         let mut subject = Subject::from(name);
-        println!("{:?}", subject.clone());
         if !subject.is_valid(&shelf) {
             return Err(Error::InvalidSubjectError(subject.path_in_shelf(&shelf)));
         }
