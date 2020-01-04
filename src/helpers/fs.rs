@@ -212,6 +212,7 @@ mod tests {
         assert_eq!(relative_path_from(dst, base), Some("../../common".into()));
     }
 
+    #[cfg(unix)]
     #[test]
     fn relpath_from_root_to_current_dir() {
         let base = PathBuf::from("/dev/sda/calculus-drive");
@@ -220,13 +221,35 @@ mod tests {
         assert_eq!(relative_path_from(dst, base), None);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn relpath_from_root_to_current_dir() {
+        let base = PathBuf::from("C:\\Windows");
+        let dst = PathBuf::from("./tests");
+
+        assert_eq!(relative_path_from(dst, base), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn relpath_to_common_root() {
+        let base = PathBuf::from("C:\\dev\\sda\\calculus-drive");
+        let dst = PathBuf::from("C:\\tests\\texture-notes-profile\\common");
+
+        assert_eq!(
+            relative_path_from(dst.clone(), base),
+            Some("../../../tests/texture-notes-profile/common".into())
+        );
+    }
+
+    #[cfg(unix)]
     #[test]
     fn relpath_to_common_root() {
         let base = PathBuf::from("/dev/sda/calculus-drive");
         let dst = PathBuf::from("/tests/texture-notes-profile/common");
 
         assert_eq!(
-            relative_path_from(dst.clone(), base),
+            relative_path_from(dst, base),
             Some("../../../tests/texture-notes-profile/common".into())
         );
     }

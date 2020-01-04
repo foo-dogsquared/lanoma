@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
 package_executable() {
     local temp_dir=$(mktemp -d)
@@ -27,9 +27,7 @@ package_executable() {
 }
 
 main() {
-    cargo test 
-    && cargo build --target "$TARGET" --release 
-    && package_executable
+    cargo test && cargo build --target "$TARGET" --verbose --release && package_executable
 }
 
 main
