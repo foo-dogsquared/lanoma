@@ -13,13 +13,6 @@ cache: cargo
 matrix:
   fast_finish: true
   include:
-    - dist: bionic
-      env: TARGET=i686-unknown-linux-gnu
-      addons:
-        apt:
-          packages:
-            - gcc-i686-linux-gnu
-
     - os: linux
       env: TARGET=x86_64-unknown-linux-gnu
 
@@ -28,12 +21,6 @@ matrix:
 
     - os: windows
       env: TARGET=x86_64-pc-windows-msvc
-
-    - os: windows
-      env: TARGET=i686-pc-windows-msvc
-
-    - os: windows
-      env: TARGET=i686-pc-windows-gnu
 
 # Installing all of the required dependencies for packaging the program.
 install: 
