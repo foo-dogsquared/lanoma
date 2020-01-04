@@ -36,7 +36,7 @@ case "$TRAVIS_OS_NAME" in
     *)
         sudo add-apt-repository universe
         sudo apt-get update
-        sudo apt-get install ruby make upx-ucl p7zip-full 
+        sudo apt-get install ruby make upx-ucl p7zip-full build-essential 
         ;;
 esac
 
