@@ -75,9 +75,12 @@ If you're using https://doc.rust-lang.org/cargo/[Cargo], you can install the bin
 
 If there's no available version for your operating system of choice, you can compile one yourself. 
 
-First, make sure you have the Rust toolchain installed. 
-Then clone the Git repository into your machine and build the executable with `cargo build`. 
+First, make sure you have the Rust toolchain and the development libraries (e.g., `gcc`) for your target system installed. 
+Then clone the Git repository into your machine and build the executable with `cargo build --release`. 
 footnote:[You can also build with `make` by using the `build` rule (i.e., `make build`).]
+
+Wait for the compilation and get the binary (named as `texture-notes`) in the `target/release/` folder. 
+You can then add the binary in the `$PATH` environment variable or similar to simply refer to it by its name. 
 
 
 
