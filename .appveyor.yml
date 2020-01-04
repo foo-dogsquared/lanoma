@@ -6,44 +6,42 @@ environment:
   matrix:
     - TARGET: i686-unknown-linux-gnu
       BITS: 32
-    - TARGET: x86_64-unknown-linux-gnu
-      BITS: 64
     - TARGET: i686-pc-windows-msvc
       BITS: 32
     - TARGET: i686-pc-windows-gnu
       BITS: 32
-    - TARGET: x86_64-pc-windows-gnu
-      BITS: 64
-    - TARGET: x86_64-pc-windows-msvc
-      BITS: 64
 
 platform:
 - x86
-- x64
-- Any CPU
 
 for:
 - matrix:
     except:
-      - BITS: 32
-        platform: x64
-      - BITS: 64
-        platform: x86
-    init:
-      - cmd: cinst ruby make upx 7zip
-      - sh: sudo apt-get update
-      - sh: sudo apt-get install ruby make upx-ucl p7zip-full build-essential
-    install:
-      - cmd: curl -sSf -o rustup-init.exe https://win.rustup.rs/
-      - cmd: rustup-init.exe -y --default-host %TARGET%
-      - cmd: set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
-      - cmd: if defined MSYS2 set PATH=C:\msys64\mingw%BITS%\bin;%PATH%
-      - sh: curl -sSf -o rustup-init https://sh.rustup.rs | sh -y --default-host "$TARGET"
-      - sh: export PATH=$PATH:~/.cargo/bin
-      - rustc -V
-      - cargo -V
-      - rustup target add "%TARGET%"
-    test_script:
-      - cargo test
-    build:
-      - cargo build --release --verbose --target "$TARGET"
+      - TARGET: i686-unknown-linux-gnu
+        image: Visual Studio 2017
+      - TARGET: i686-pc-windows-msvc
+        image: Ubuntu
+      - TARGET: i686-pc-windows-gnu
+        image: Ubuntu
+  
+  init:
+    - cmd: cinst ruby make upx 7zip
+    - sh: sudo apt-get update
+    - sh: sudo apt-get install ruby make upx-ucl p7zip-full build-essential
+  
+  install:
+    - cmd: curl -sSf -o rustup-init.exe https://win.rustup.rs/
+    - cmd: rustup-init.exe -y --default-host %TARGET%
+    - cmd: set PATH=%PATH%;C:\Users\appveyor\.cargo\bin
+    - cmd: if defined MSYS2 set PATH=C:\msys64\mingw%BITS%\bin;%PATH%
+    - sh: curl -sSf -o rustup-init https://sh.rustup.rs | sh -y --default-host "$TARGET"
+    - sh: export PATH=$PATH:~/.cargo/bin
+    - rustc -V
+    - cargo -V
+    - rustup target add "%TARGET%"
+  
+  build_script:
+    - cargo build --release --verbose --target %TARGET%
+  
+  test_script:
+    - cargo test
