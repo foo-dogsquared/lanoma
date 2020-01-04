@@ -9,16 +9,19 @@ env:
   PROJECT_NAME: texture-notes
 cache: cargo
 
-arch:
-  - amd64
-  - arm64
-
 # For now, it only support the operating systems I always get to use. 
 matrix:
   fast_finish: true
   include:
     - os: linux
       env: TARGET=x86_64-unknown-linux-gnu
+
+    - os: linux
+      env: TARGET=armv7-unknown-linux-gnueabihf
+      arch: arm64
+      addons:
+        apt:
+          - gcc-arm-linux-gnueabihf
 
     - os: windows
       env: TARGET=x86_64-pc-windows-gnu
