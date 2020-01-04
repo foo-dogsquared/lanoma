@@ -472,7 +472,6 @@ mod tests {
             .notes(test_notes.clone())
             .subject(test_subjects[0].clone())
             .thread_count(4);
-        assert_eq!(compilation_env.compile(&shelf)?.len(), 5);
 
         assert!(Profile::from(profile_tmp_dir).is_ok());
 
