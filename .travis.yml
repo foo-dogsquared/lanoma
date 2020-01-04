@@ -35,8 +35,12 @@ script:
 
 before_deploy: ci/before_deploy.sh
 deploy:
-  provider: pages
+  provider: releases
+  api_key: $GITHUB_TOKEN
   file_glob: true
+  file: deployment/${PROJECT_NAME}-${TRAVIS_TAG}-${TARGET}.*
+  overwrite: true
+  skip_cleanup: true
   on:
     tags: true
     branch: master
