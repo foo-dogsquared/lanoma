@@ -172,11 +172,10 @@ impl Shelf {
     pub fn create_subjects<'s>(
         &self,
         subjects: &'s Vec<Subject>,
-        export_options: &ExportOptions,
     ) -> Vec<&'s Subject> {
         subjects
             .iter()
-            .filter(|&subject| subject.export(&self, export_options.strict).is_ok())
+            .filter(|&subject| subject.export(&self).is_ok())
             .collect()
     }
 
@@ -206,13 +205,14 @@ impl Shelf {
     /// Get the notes in the shelf filesystem.
     pub fn get_notes_in_fs(
         &self,
+        file_globs: &Vec<String>,
         subject: &Subject,
     ) -> Result<Vec<Note>> {
         let mut notes: Vec<Note> = vec![];
 
         let subject_path = subject.path_in_shelf(&self);
 
-        let tex_files = globwalk::GlobWalkerBuilder::new(subject_path, "*.tex")
+        let tex_files = globwalk::GlobWalkerBuilder::from_patterns(subject_path, &file_globs)
             .build()
             .map_err(Error::GlobParsingError)?;
 
@@ -312,7 +312,7 @@ mod tests {
             &shelf,
         )?;
 
-        let created_subjects = shelf.create_subjects(&test_subject_input, &export_options);
+        let created_subjects = shelf.create_subjects(&test_subject_input);
         assert_eq!(created_subjects.len(), 3);
 
         let created_notes = shelf.create_notes(
@@ -329,7 +329,7 @@ mod tests {
         let available_notes = shelf.get_notes(&test_subject_input[0], &test_note_input);
         assert_eq!(available_notes.len(), 3);
 
-        let all_available_notes_from_fs = shelf.get_notes_in_fs(&test_subject_input[0])?;
+        let all_available_notes_from_fs = shelf.get_notes_in_fs(&test_subject_input[0].note_filter(&shelf), &test_subject_input[0])?;
         assert_eq!(all_available_notes_from_fs.len(), 3);
 
         let deleted_notes = shelf.delete_notes(&test_subject_input[0], &test_note_input);
@@ -353,11 +353,11 @@ mod tests {
         let test_subject: Subject = Subject::from("Mathematics".to_string());
         assert_eq!(test_subject.is_valid(&shelf), false);
 
-        test_subject.export(&shelf, export_options.strict)?;
+        test_subject.export(&shelf)?;
         assert_eq!(test_subject.is_valid(&shelf), true);
         assert_eq!(test_subject.is_path_exists(&shelf), true);
 
-        shelf.create_subjects(&vec![test_subject.clone()], &export_options);
+        shelf.create_subjects(&vec![test_subject.clone()]);
         assert_eq!(test_subject.is_valid(&shelf), true);
         assert_eq!(test_subject.is_path_exists(&shelf), true);
 

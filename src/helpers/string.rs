@@ -1,8 +1,10 @@
 use regex::Regex;
 
-pub fn kebab_case(string: &str) -> String {
+pub fn kebab_case<S: AsRef<str>>(string: S) -> String {
     // Saving memory by compiling the regexes only once throughout the program
     // with the use of the `lazy_static` crate
+    let string = string.as_ref();
+
     lazy_static! {
         static ref WHITESPACE_CHARACTERS: Regex = Regex::new(r"\s+|-+").unwrap();
         static ref INVALID_CHARACTERS: Regex = Regex::new(r"[^A-Za-z0-9]+").unwrap();

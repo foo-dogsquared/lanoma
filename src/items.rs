@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write};
-use std::path::PathBuf;
-use std::result::Result;
+use std::path::{self, PathBuf};
+use std::str::FromStr;
 
 use chrono::{self};
 use serde::{Deserialize, Serialize};
@@ -11,6 +10,7 @@ use toml;
 use crate::error::Error;
 use crate::helpers;
 use crate::shelf::Shelf;
+use crate::Result;
 
 const SUBJECT_METADATA_FILE: &str = "info.toml";
 
@@ -20,9 +20,6 @@ const SUBJECT_METADATA_FILE: &str = "info.toml";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Subject {
     name: String,
-
-    #[serde(flatten)]
-    extra: HashMap<String, toml::Value>,
 }
 
 impl Subject {
@@ -30,7 +27,6 @@ impl Subject {
     pub fn new() -> Self {
         Self {
             name: String::new(),
-            extra: HashMap::new(),
         }
     }
 
@@ -57,7 +53,6 @@ impl Subject {
             .collect();
         Self {
             name: path.to_str().unwrap().to_string(),
-            extra: HashMap::new(),
         }
     }
 
@@ -66,19 +61,10 @@ impl Subject {
     pub fn from_shelf(
         name: &str,
         shelf: &Shelf,
-    ) -> Result<Self, Error> {
-        let mut subject = Subject::from(name);
+    ) -> Result<Self> {
+        let subject = Subject::from(name);
         if !subject.is_valid(&shelf) {
             return Err(Error::InvalidSubjectError(subject.path_in_shelf(&shelf)));
-        }
-
-        if subject.has_metadata_file(&shelf) {
-            let metadata_path = subject.metadata_path_in_shelf(&shelf);
-            let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
-
-            // changing the name of the TOML value to the referred name since it contains the TOML value as a stem.
-            subject = toml::from_str(&metadata).map_err(Error::TomlValueError)?;
-            subject.name = name.to_string();
         }
 
         Ok(subject)
@@ -143,7 +129,7 @@ impl Subject {
     pub fn datetime_modified(
         &self,
         shelf: &Shelf,
-    ) -> Result<chrono::DateTime<chrono::Utc>, Error> {
+    ) -> Result<chrono::DateTime<chrono::Utc>> {
         match self.is_valid(&shelf) {
             true => {
                 let metadata = fs::metadata(self.path_in_shelf(&shelf)).map_err(Error::IoError)?;
@@ -162,7 +148,14 @@ impl Subject {
         PathBuf::from(&self.name)
             .components()
             .into_iter()
-            .map(|component| helpers::string::kebab_case(component.as_os_str().to_str().unwrap()))
+            .map(|component| {
+                let s = component.as_os_str().to_str().unwrap();
+
+                match component {
+                    path::Component::Normal(c) => helpers::string::kebab_case(s),
+                    _ => s.to_string(),
+                }
+            })
             .collect()
     }
 
@@ -204,12 +197,22 @@ impl Subject {
         self.metadata_path_in_shelf(&shelf).is_file()
     }
 
+    /// Extract the metadata file as a subject instance.
+    pub fn get_metadata(
+        &self,
+        shelf: &Shelf,
+    ) -> Result<toml::Value> {
+        let metadata_path = self.metadata_path_in_shelf(&shelf);
+        let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
+
+        toml::from_str(&metadata).map_err(Error::TomlValueError)
+    }
+
     /// Exports the instance in the filesystem.
     pub fn export(
         &self,
         shelf: &Shelf,
-        strict: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if !shelf.is_valid() {
             return Err(Error::UnexportedShelfError(shelf.path()));
         }
@@ -221,27 +224,6 @@ impl Subject {
             helpers::fs::create_folder(&dir_builder, &path)?;
         }
 
-        let metadata_path = self.metadata_path_in_shelf(&shelf);
-        let mut metadata_file_options = OpenOptions::new();
-        metadata_file_options.write(true);
-
-        if !self.has_metadata_file(&shelf) || strict {
-            metadata_file_options.create_new(true);
-        } else {
-            metadata_file_options.truncate(true);
-        }
-
-        let mut metadata_file = metadata_file_options
-            .open(metadata_path)
-            .map_err(Error::IoError)?;
-        metadata_file
-            .write(
-                toml::to_string_pretty(&self.stem())
-                    .map_err(Error::TomlSerializeError)?
-                    .as_bytes(),
-            )
-            .map_err(Error::IoError)?;
-
         Ok(())
     }
 
@@ -249,7 +231,7 @@ impl Subject {
     pub fn delete(
         &self,
         notes: &Shelf,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let path = self.path_in_shelf(&notes);
         fs::remove_dir_all(path).map_err(Error::IoError)
     }
@@ -270,35 +252,26 @@ impl Subject {
         self.is_path_exists(&shelf)
     }
 
-    /// Returns the valid subjects in the shelf filesystem sorted by the modification datetime.
-    pub fn sort_by_date(
+    /// Returns the `_file` metadata. 
+    /// If the key does not exist or invalid, it will return the default value. 
+    pub fn note_filter(
+        &self,
         shelf: &Shelf,
-        subjects: &Vec<Subject>,
-    ) -> Vec<Subject> {
-        if !shelf.is_valid() {
-            return vec![];
-        }
-
-        let mut valid_subjects: Vec<Subject> = subjects
+    ) -> Vec<String> {
+        self.get_metadata(&shelf)
+            // If there is no metadata file, give the default files key.
+            .unwrap_or(toml::Value::from_str("_files = ['*.tex']").unwrap())
+            .get("_files")
+            // If the metadata file is present but has no valid `_files` key.
+            .unwrap_or(&toml::Value::try_from(["*.tex"]).unwrap())
+            // At this point, it is guaranteed to be an array so it is safe to unwrap this.
+            .as_array()
+            .unwrap()
             .iter()
-            .filter(|subject| subject.is_valid(&shelf))
-            .cloned()
-            .collect();
-
-        valid_subjects.sort_unstable_by(|a, b| {
-            let a = match a.datetime_modified(&shelf) {
-                Ok(v) => v,
-                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0),
-            };
-            let b = match b.datetime_modified(&shelf) {
-                Ok(v) => v,
-                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0),
-            };
-
-            a.partial_cmp(&b).unwrap()
-        });
-
-        valid_subjects
+            .map(|value| value.as_str())
+            .filter(|value| value.is_some())
+            .map(|value| value.unwrap().to_string())
+            .collect()
     }
 
     /// Returns a vector of the parts of the subject.
@@ -372,7 +345,7 @@ impl Note {
         title: S,
         subject: &Subject,
         notes: &Shelf,
-    ) -> Result<Option<Self>, Error> {
+    ) -> Result<Option<Self>> {
         let title = title.as_ref();
         let note = Note::new(title.to_string());
 
@@ -387,7 +360,7 @@ impl Note {
         note_titles: &Vec<S>,
         subject: &Subject,
         notes: &Shelf,
-    ) -> Result<Vec<Option<Self>>, Error> {
+    ) -> Result<Vec<Option<Self>>> {
         let mut notes_vector: Vec<Option<Self>> = vec![];
 
         for title in note_titles.iter() {
@@ -406,7 +379,7 @@ impl Note {
         note_titles: &Vec<S>,
         subject: &Subject,
         notes: &Shelf,
-    ) -> Result<Vec<Self>, Error> {
+    ) -> Result<Vec<Self>> {
         let mut notes_vector: Vec<Self> = vec![];
 
         for title in note_titles.iter() {
@@ -432,7 +405,7 @@ impl Note {
         &self,
         subject: &Subject,
         shelf: &Shelf,
-    ) -> Result<chrono::DateTime<chrono::Utc>, Error> {
+    ) -> Result<chrono::DateTime<chrono::Utc>> {
         match self.is_path_exists(&subject, &shelf) {
             true => {
                 let metadata =
@@ -489,7 +462,7 @@ impl Note {
         notes: &Shelf,
         template: &str,
         strict: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if !notes.is_valid() {
             return Err(Error::UnexportedShelfError(notes.path()));
         }
@@ -522,7 +495,7 @@ impl Note {
         &self,
         subject: &Subject,
         notes: &Shelf,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let path = self.path_in_shelf(&subject, &notes);
 
         fs::remove_file(path).map_err(Error::IoError)
@@ -535,38 +508,6 @@ impl Note {
         notes: &Shelf,
     ) -> bool {
         self.path_in_shelf(&subject, &notes).is_file()
-    }
-
-    /// Returns all of the notes that are in the shelf filesystem sorted by its modification datetime.
-    pub fn sort_by_date(
-        shelf: &Shelf,
-        subject: &Subject,
-        notes: &Vec<Note>,
-    ) -> Vec<Note> {
-        if !subject.is_path_exists(&shelf) {
-            return vec![];
-        }
-
-        let mut valid_notes: Vec<Note> = notes
-            .iter()
-            .filter(|note| note.is_path_exists(&subject, &shelf))
-            .cloned()
-            .collect();
-
-        valid_notes.sort_unstable_by(|a, b| {
-            let a: chrono::DateTime<chrono::Utc> = match a.datetime_modified(&subject, &shelf) {
-                Ok(v) => v,
-                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0),
-            };
-            let b = match b.datetime_modified(&subject, &shelf) {
-                Ok(v) => v,
-                Err(_e) => chrono::MIN_DATE.and_hms(0, 0, 0),
-            };
-
-            a.partial_cmp(&b).unwrap()
-        });
-
-        valid_notes
     }
 }
 
