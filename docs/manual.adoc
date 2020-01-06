@@ -1,12 +1,16 @@
 = texture-notes(1)
 Gabriel Arazas
 2019-12-31
+:toc:
 :doctype: manpage
 :manmanual: Texture Notes Manual
 :mansource: Texture Notes v2.0.0
 :man-linkstyle: pass:[red R < >]
 
 :default-template-name: _default
+:templates-folder: .templates
+:profile-metadata-file: .profile.toml
+:subject-metadata-file: info.toml
 
 
 
@@ -76,11 +80,11 @@ See the <<Default config locations>> appendix section for more details.
 
 A profile contains the following data:
 
-* A profile metadata which is stored in `profile.toml`. 
+* A profile metadata which is stored in `{profile-metadata-file}`. 
 The TOML file should have the keys `name` and `version` along with the correct data types (i.e., string). 
 Custom keys can be added which is useful when creating note templates which will be discussed later in the manual. 
 
-* A set of templates in `templates` directory. 
+* A set of templates in `{templates-folder}` directory. 
 It is a key-value store with the name of the `.tex` files as the key. 
 
 
@@ -102,8 +106,7 @@ texture-notes compile notes "Calculus I" -- "Introduction to limits" "Taylor ser
 texture-notes remove subjects "Calculus II"
 ----
 
-A *subject* in Texture Note is just a folder with a metadata file named `info.toml`. 
-It only needs a field called `name` with a string value. 
+A *subject* in Texture Note is just a folder with a metadata file named `{subject-metadata-file}`. 
 
 For convenience, you can refer to the same subject as long as the resulting kebab-case string is the same. 
 
@@ -128,8 +131,8 @@ You can refer to the Calculus I from the first year folder in different ways ass
 
 [source, shell]
 ----
-texture-notes add notes "Year 1/Semester 1/Calculus I" --- NOTES...
-texture-notes add notes "year-1/semester-1/calculus-i" --- NOTES...
+texture-notes add notes "Year 1/Semester 1/Calculus I" -- NOTES...
+texture-notes add notes "year-1/semester-1/calculus-i" -- NOTES...
 ----
 
 As long as the resulting kebab-case of each component in the path is the same, it is considered as the same subject. 
@@ -141,7 +144,7 @@ The same applies for referring to notes.
 === Note templates 
 
 Texture Notes has a simple templating system for your LaTeX documents. 
-As briefly mentioned, the templates are located in a profile specifically in the `templates/` folder. 
+As briefly mentioned, the templates are located in a profile specifically in the `{templates-folder}` folder. 
 
 Internally, the templates is represented as a key-value store. 
 The key-value store comes from the folder that expects a list of `.tex` files with the file name as the key. 
@@ -189,22 +192,31 @@ The following TOML table is then formed in the note creation process.
 ----
 name = "STUDENT_NAME"
 version = "VERSION"
+_date = "2019-01-06"
 
 # The rest of the keys in `profile.toml`. 
 # ...
 
 [note]
 title = "Introduction to limits"
-file_name = "introduction-to-limits.tex"
+_file = "introduction-to-limits.tex"
+// ...
+_relpath_from_shelf = "introduction-to-limits.tex"
 
 [subject]
 name = "Calculus I"
+_file = "calculus"
+// ...
+_relpath_from_shelf = ""
 # The rest of the keys in `info.toml` of the subject.
 ----
 
 This is where setting custom keys can be handy. 
-If you want a globally applied data, you can add a few fields on the `profile.toml` in the profile directory. 
-For subject-specific data, you can add a `info.toml` and
+If you want a globally applied data, you can add a few fields on the `{profile-metadata-file}` in the profile directory. 
+It is then accessible in the template as a top-level field. 
+
+For subject-specific data, you can add a `{subject-metadata-file}` and create a note. 
+It is accessible under the `subject` table. 
 
 
 === LaTeX documents compilation 
@@ -218,14 +230,46 @@ This is mainly used with the `compile` subcommand.
 texture-notes compile notes "Calculus I" -- "Introduction to limits"
 ----
 
-You can change the number of threads compiling the documents with the `--threadcount` option. 
+You can change the number of threads compiling the documents with the `--thread-count` option. 
 The default compilation process spawns four threads. 
 
 You can also change the default
 The default compilation command is `'latexmk -pdf {{note}}'`. 
-You can override the default command by setting the `command` key in the `profile.toml`. 
+You can override the default command by setting the `command` key in the `{profile-metadata-file}`. 
 Similar to note templates, the command template uses Handlebars. 
 The available fields for substituing is `note` which is the basically the resulting file name (e.g., "Introduction to calculus" to "introduction-to-calculus.tex"). 
+
+You can also compile certain files either by: 
+
+* Setting with the command line option `--files` which accepts similar array of strings. 
+The command line option has the highest precedence. 
+* Setting a key in `{subject-metadata-file}` named *_files* which is an array of strings (file globs). 
+Even if there is a `_files` key, the command line option will override the note filter. 
+
+
+
+
+== Metadata keys reference 
+
+A reference of the keys Texture Notes officially recognizes. 
+
+*`{profile-metadata-file}`*:: 
+
+* `name` - The name of the profile. 
+This field is required. 
+* `version`- The version of the profile. 
+This field is required. 
+This key may or may not have expanded upon future versions. 
+* `command` - The compilation command for the notes. 
+If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
+
+*`{subject-metadata-file}`*::
+
+* `name` - The name of the subject. 
+Mainly used for creating the note template. 
+* `_files` - An array of globs pointing to a note. 
+This is mainly used as a filter for retrieving all notes of the specified subject. 
+The default value is `["*.tex"]`. 
 
 
 
@@ -248,6 +292,44 @@ https://github.com/foo-dogsquared/texture-notes-v2
 
 Issue tracker::
 https://github.com/foo-dogsquared/texture-notes-v2/issues
+
+
+
+
+[appendix]
+== Built-in TOML 
+
+While creating a note, a https://github.com/toml-lang/toml[TOML] is formed to be integrated with the template. 
+This is derived from multiple sources such as the profile, subject, and the note. 
+
+The resulting TOML first get the data from the profile metadata file (`{profile-metadata-file}`). 
+
+Next, the TOML for the note is formed. 
+This is then assigned to the *note* table of the resulting TOML. 
+
+The note TOML also comes with the following keys with dynamic values. 
+
+* `title` - The title of the note. 
+* `_slug` - The resulting title in kebab case. 
+* `_file` - The resulting file name of the note. 
+It is basically the note title in kebab case appended with `.tex`. 
+* `_path` - The resulting path of the note. 
+* `_relpath_to_shelf` - The resulting relative path from the directory of the note to the shelf. 
+* `_relpath_from_shelf` - The resulting relative path from the shelf to the directory of the note. 
+
+Lastly, the TOML for the subject is formed. 
+If the subject has a metadata file (`{subject-metadata-file}`), it will build the TOML from there. 
+The following keys are then set with dynamic values and assign under the profile TOML as a table named *subject*. 
+
+CAUTION: Any data from the subject metadata file with the same keys will be overridden with the autogenerated values (except for one case). 
+It is generally advised not to use the following keys. 
+
+* `name` - The name of the subject. 
+If there is `{subject-metadata-file}` with the field, it will use it instead. 
+* `_slug` - The resulting kebab case of the name. 
+* `_path` - The path of the subject. 
+* `_relpath_to_shelf` - The resulting relative path from the subject directory to the shelf. 
+* `_relpath_from_shelf` - The resulting relative path from the shelf to the subject directory. 
 
 
 
