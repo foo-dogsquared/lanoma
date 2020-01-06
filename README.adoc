@@ -15,55 +15,46 @@ Nonetheless, pull requests for improvements are always welcome!
 
 
 
-== Objectives 
+== Design rationale 
 
-While creating this program, I have certain objectives to attain. 
-Setting up and openly stating the objectives can make you learn the strengths and limitations of the program. 
+* Create a potentially reusable LaTeX notes setup. 
 
-* Create a reusable LaTeX notes setup instead of specifically crafting one for every book/notes I make. 
+* Create a LaTeX-related tool that can easily transfer, move, or integrate with other setups. 
 
-* Create a LaTeX document setup that can easily transfer/move to other setups.
-
-* Create a personal knowledge base (made with LaTeX documents) that is easily searchable and retrievable. 
-
-* Automate LaTeX files management including adding, deleting, and compiling documents. 
+* Automate basic LaTeX files management including adding, deleting, and compiling documents. 
 
 * Make the program fit nicely with the existing workflow. 
-(I doubt this will happen though, TBH.) 
 
-Furthermore, this program is specifically created for my workflow which leaves little room for other use cases. 
-I hope implementing some features that mitigates against that (but not fully). 
+* Furthermore, this program is specifically created for my workflow that can work cross-platform. This also leaves little room for other use cases. 
 
 
 
 
 == Limitations
 
-Now the objectives are out, let's explicitly lay out the expected limitations of this program. 
+Now the design rationale is out, let's explicitly lay out the expected limitations of this program. 
 
 * First and foremost, it's a niche tool for a **very** niche use. 
-Also, with the use of makefiles and shell scripts, you can easily set up a compilation workflow for your LaTeX documents. 
+Also, with the use of makefiles and shell scripts, you can easily set up a similar (or better) workflow for your LaTeX documents. 
 Besides, creating a similar tool could've been easier (and better) with shell scripts and makefiles. 
 I just did to myself because I want to learn Rust. 
-
-* If we're talking about personal knowledge bases, linking between concepts similar to a mind map is not possible. 
-For me, it's suitable to think more of a https://en.wikipedia.org/wiki/Tree_%28data_structure%29[tree] rather than a https://en.wikipedia.org/wiki/Graph_(data_structure)[graph]. 
-
-* Limited importing options for LaTeX documents. 
-Due to trying to be two things at once, there is a compromise with how you can freely import other LaTeX documents. 
 
 * There's not much room for customizability. 
 It is based from my specific workflow, after all. 
 It is ought to happen. 
 Maybe in the future, I'll improve to be used in general cases but I doubt it will improve the program. 
 
+* This is not made for organizing the notes or anything. 
+
 * It uses LaTeX. ;) 
-footnote:[I would like to create a generalistic personal knowledge base for Asciidoctor documents or even better, a configurable personal knowledge base similar to https://gohugo.io/content-management/archetypes/[Hugo archetypes] and https://gohugo.io/content-management/formats/#additional-formats-through-external-helpers[the external helpers system].] 
+footnote:[I would like to create a generic personal knowledge base for Asciidoctor documents or even better, a configurable personal knowledge base similar to https://gohugo.io/content-management/archetypes/[Hugo archetypes] and https://gohugo.io/content-management/formats/#additional-formats-through-external-helpers[the external helpers system].] 
 
 If you're looking for an alternative for your personal knowledge base, a simple directory tree of notes will do. 
 I've also made my personal knowledge base with just a folder of https://asciidoctor.org/[Asciidoctor] documents and created a Python script for compiling them all. 
 I've https://github.com/foo-dogsquared/personal-notes/[open sourced] it just for backup purposes. 
 You can then search for your files with the `find` command. 
+
+I've also met people online that are more content with a simple list of directories and a bunch of documents in a certain format (i.e., https://orgmode.org/[Org Mode], https://jupyter.org/[Jupyter notebooks]). 
 
 
 
@@ -75,12 +66,12 @@ If you're using https://doc.rust-lang.org/cargo/[Cargo], you can install the bin
 
 If there's no available version for your operating system of choice, you can compile one yourself. 
 
-First, make sure you have the Rust toolchain and the development libraries (e.g., `gcc`) for your target system installed. 
+First, make sure you have the Rust toolchain (>=`v1.39.0` just to be safe) and the development libraries (e.g., `gcc`, `musl`) for your target system installed. 
 Then clone the Git repository into your machine and build the executable with `cargo build --release`. 
 footnote:[You can also build with `make` by using the `build` rule (i.e., `make build`).]
 
 Wait for the compilation and get the binary (named as `texture-notes`) in the `target/release/` folder. 
-You can then add the binary in the `$PATH` environment variable or similar to simply refer to it by its name. 
+You can then move the binary in your `$PATH`. 
 
 
 
@@ -92,7 +83,8 @@ For now (or maybe not), this program is specifically made for my LaTeX workflow.
 In order to make use of this application, you need to have the following programs installed already in the system: 
 
 * A LaTeX distribution (http://www.tug.org/interest.html#free[here's a list of options, if you haven't installed one])
-* https://www.ctan.org/pkg/latexmk/[Latexmk]
+
+That's pretty much it. 
 
 
 === Quick start 
@@ -126,17 +118,8 @@ texture-notes-v2 add notes "Mathematics" "Introduction to Calculus"
 texture-notes-v2 compile subjects "Mathematics"
 ----
 
-
-
-
-== Architecture 
-
-Texture Notes v2 uses Rust for building the core and command line interface. 
-
-A Texture Notes profile is composed of the profile input, notes, templates, and common files for customizable options. 
-The note manager also enforces a specific folder structure with the data. 
-
-image::./docs/assets/texture-notes-profile.svg[]
+You can check out more options in the link:docs/manual.adoc[manual]. 
+It also gives the complete details of what you need to know with Texture Notes. 
 
 
 
@@ -146,7 +129,6 @@ image::./docs/assets/texture-notes-profile.svg[]
 Here are the features to be implemented whenever possible. 
 
 * Hooks scripts using Rust. 
-* Exclude the new note in the database. 
 
 I would also like to improve the program on the following areas: 
 

@@ -212,6 +212,22 @@ mod tests {
         assert_eq!(relative_path_from(dst, base), Some("../../common".into()));
     }
 
+    #[test]
+    fn relpath_to_leading_common_relpaths() {
+        let base = PathBuf::from("./tests/texture-notes-profile/common");
+        let dst = PathBuf::from("./tests/texture-notes-profile/common/calculus");
+
+        assert_eq!(relative_path_from(dst, base), Some("calculus".into()));
+    }
+
+    #[test]
+    fn relpath_to_the_same_input() {
+        let base = PathBuf::from("./tests/texture-notes-profile/common");
+        let dst = PathBuf::from("./tests/texture-notes-profile/common");
+
+        assert_eq!(relative_path_from(dst, base), Some("".into()));
+    }
+
     #[cfg(unix)]
     #[test]
     fn relpath_from_root_to_current_dir() {

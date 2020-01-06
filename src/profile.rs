@@ -10,6 +10,7 @@ use crate::consts;
 use crate::error::Error;
 use crate::helpers;
 use crate::items::{Note, Subject};
+use crate::shelf::Shelf;
 use crate::templates::{self, TemplateGetter, TemplateRegistry};
 use crate::Result;
 
@@ -22,12 +23,25 @@ pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
 pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "_master";
 
 /// A basic macro for modifying a TOML table.
-macro_rules! modify_toml {
+macro_rules! modify_toml_table {
     ($var:ident, $( ($field:expr, $value:expr) ),*) => {
         let mut temp_table = $var.as_table_mut().unwrap();
 
         $(
-            temp_table.insert(String::from($field), $value);
+            temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
+        )*
+    };
+}
+
+/// A basic macro for upserting a TOML table.
+macro_rules! upsert_toml_table {
+    ($var:ident, $( ($field:expr, $value:expr) ),*) => {
+        let mut temp_table = $var.as_table_mut().unwrap();
+
+        $(
+            if temp_table.get($field).is_none() {
+                temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
+            }
         )*
     };
 }
@@ -275,10 +289,52 @@ impl Profile {
 
         let templates = TemplateGetter::get_templates(self.templates_path(), "*.tex")?;
         registry.register_vec(&templates)?;
-
         self.templates = registry;
 
         Ok(())
+    }
+
+    fn create_toml_from_subject(
+        &self,
+        shelf: &Shelf,
+        subject: &Subject,
+    ) -> toml::Value {
+        let mut subject_as_toml = match subject.get_metadata(&shelf) {
+            Ok(v) => v,
+            Err(_e) => toml::Value::from(HashMap::<String, toml::Value>::new()),
+        };
+        let subject_path = subject.path_in_shelf(&shelf);
+        upsert_toml_table! {subject_as_toml,
+            ("name", subject.name())
+        };
+        modify_toml_table! {subject_as_toml,
+            ("_slug", helpers::string::kebab_case(&subject.name())),
+            ("_path", subject_path.clone()),
+            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), subject_path.clone()).unwrap().to_str().unwrap()),
+            ("_relpath_from_shelf", helpers::fs::relative_path_from(subject_path, &shelf.path()).unwrap().to_str().unwrap())
+        };
+
+        subject_as_toml
+    }
+
+    fn create_toml_from_note(
+        &self,
+        shelf: &Shelf,
+        subject: &Subject,
+        note: &Note,
+    ) -> toml::Value {
+        let mut note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
+        let note_path = note.path_in_shelf(&subject, &shelf);
+        modify_toml_table! {note_as_toml,
+            ("title", note.title()),
+            ("_slug", helpers::string::kebab_case(note.title())),
+            ("_file", note.file_name()),
+            ("_path", note_path.clone()),
+            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), note_path.clone()).unwrap().to_str().unwrap()),
+            ("_relpath_from_shelf", helpers::fs::relative_path_from(note_path, &shelf.path()).unwrap().to_str().unwrap())
+        };
+
+        note_as_toml
     }
 
     /// Returns a string from a Handlebars template.
@@ -287,6 +343,7 @@ impl Profile {
     /// like `title` (the title of the note) and `subject` (the name of the subject).
     pub fn return_string_from_note_template<S>(
         &self,
+        shelf: &Shelf,
         subject: &Subject,
         note: &Note,
         template_name: &Option<S>,
@@ -294,19 +351,18 @@ impl Profile {
     where
         S: AsRef<str>,
     {
+        let subject_toml = self.create_toml_from_subject(&shelf, &subject);
+        let note_toml = self.create_toml_from_note(&shelf, &subject, &note);
+
+        // The metadata is guaranteed to be valid since the codebase enforces it to be valid either at creation
+        // or at retrieval from a folder.
+        // It is safe to call `unwrap` from here.
         let mut metadata: toml::Value = toml::Value::try_from(self.metadata.clone()).unwrap();
-        let mut note_as_toml = toml::Value::try_from(note.clone()).unwrap();
-        modify_toml! {note_as_toml,
-            ("title", toml::Value::String(note.title())),
-            ("file_name", toml::Value::String(note.file_name()))
+        modify_toml_table! {metadata,
+            ("subject", subject_toml),
+            ("note", note_toml),
+            ("_date", toml::Value::String(chrono::Local::now().format("%F").to_string()))
         };
-
-        modify_toml! {metadata,
-            ("subject", toml::Value::try_from(subject.stem()).unwrap()),
-            ("note", note_as_toml),
-            ("date", toml::Value::String(chrono::Local::now().format("%F").to_string()))
-        };
-
         let template_name = match template_name.as_ref() {
             Some(v) => v.as_ref(),
             None => PROFILE_NOTE_TEMPLATE_NAME,
@@ -463,7 +519,7 @@ mod tests {
         \end{document}
         ";
 
-        shelf.create_subjects(&test_subjects, &export_options);
+        shelf.create_subjects(&test_subjects);
         shelf.create_notes(&test_subjects[0], &test_notes, test_input, &export_options);
 
         let mut compilation_env = CompilationEnvironment::new();
@@ -514,7 +570,7 @@ mod tests {
         \end{document}
         ";
 
-        shelf.create_subjects(&test_subjects, &export_options);
+        shelf.create_subjects(&test_subjects);
         shelf.create_notes(&test_subjects[0], &test_notes, test_input, &export_options);
 
         let mut compilation_env = CompilationEnvironment::new();

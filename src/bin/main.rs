@@ -93,7 +93,7 @@ pub enum Command {
 
     #[structopt(about = "Lists the subjects and its notes from the database.")]
     List {
-        #[structopt(short, long, possible_values = &["id", "name"], help = "Sort the entries.")]
+        #[structopt(short, long, possible_values = &["date", "name"], help = "Sort the entries.")]
         sort: Option<String>,
 
         #[structopt(
@@ -119,6 +119,9 @@ pub enum Command {
             help = "Creates a specified number of threads compiling in parallel."
         )]
         thread_count: i64,
+
+        #[structopt(short, long, help = "Specifies what files to be compiled.")]
+        files: Option<Vec<String>>,
 
         #[structopt(short, long, help = "Overrides the default compilation command.")]
         command: Option<String>,
@@ -198,8 +201,8 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
 
                     let mut created_notes: Vec<Note> = vec![];
                     for note in notes {
-                        let template_string =
-                            profile.return_string_from_note_template(&subject, &note, &template)?;
+                        let template_string = profile
+                            .return_string_from_note_template(&shelf, &subject, &note, &template)?;
 
                         if shelf
                             .create_note(&subject, &note, &template_string, &export_options)
@@ -216,7 +219,7 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                 }
                 Input::Subjects { subjects } => {
                     let subjects = Subject::from_vec_loose(&subjects, &shelf);
-                    let created_subjects = shelf.create_subjects(&subjects, &export_options);
+                    let created_subjects = shelf.create_subjects(&subjects);
 
                     if created_subjects.len() <= 0 {
                         println!("No subjects has been created.");
@@ -253,6 +256,7 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
         Command::Compile {
             kind,
             thread_count,
+            files,
             command,
         } => {
             let profile = Profile::from(&profile_path)?;
@@ -283,8 +287,10 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
 
                     for subject in subjects.iter() {
                         let subject = Subject::from_shelf(&subject, &shelf)?;
-                        let notes = shelf.get_notes_in_fs(&subject)?;
+                        let _file_filter = subject.note_filter(&shelf);
+                        let file_filter = files.as_ref().unwrap_or(&_file_filter);
 
+                        let notes = shelf.get_notes_in_fs(&file_filter, &subject)?;
                         let mut env = CompilationEnvironment::new();
                         env.command(command.clone())
                             .notes(notes)
