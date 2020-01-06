@@ -25,22 +25,24 @@ install_target() {
     fi
 }
 
-# Installing the dependencies 
-case "$TRAVIS_OS_NAME" in 
-    "windows")
-        choco install ruby make upx 7zip
-        ;;
-    "macos")
-        sudo brew install ruby make upx 7zip 
-        ;;
-    *)
-        sudo add-apt-repository universe
-        sudo apt-get update
-        sudo apt-get install ruby make upx-ucl p7zip-full build-essential 
-        ;;
-esac
+install_deps() {
+    case "$TRAVIS_OS_NAME" in 
+        "windows")
+            choco install ruby make upx 7zip
+            ;;
+        "macos")
+            sudo brew install ruby make upx 7zip 
+            ;;
+        "linux")
+            sudo add-apt-repository universe
+            sudo apt-get update
+            sudo apt-get install ruby make upx-ucl p7zip-full build-essential 
+            ;;
+    esac
+}
 
 main() {
+    install_deps
     install_target
 }
 

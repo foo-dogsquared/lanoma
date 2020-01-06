@@ -27,7 +27,8 @@ package_executable() {
 }
 
 main() {
-    cargo test && cargo build --target "$TARGET" --verbose --release && package_executable
+    rustup component add rustfmt
+    cargo fmt -- --check && cargo test && cargo build --target "$TARGET" --verbose --release && package_executable
 }
 
 main
