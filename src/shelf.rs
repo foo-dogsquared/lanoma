@@ -5,7 +5,8 @@ use globwalk;
 
 use crate::error::Error;
 use crate::helpers;
-use crate::items::{Note, Subject};
+use crate::items::Note;
+use crate::subjects::Subject;
 use crate::Result;
 
 /// A struct holding the common export options.
@@ -279,6 +280,20 @@ impl Shelf {
     // TODO: Update operation for the subjects and the notes
 }
 
+pub trait ShelfItem {
+    fn path_in_shelf(&self) -> PathBuf;
+    fn is_path_exists(&self) -> bool;
+    fn export(&self) -> Result<()>;
+    fn delete(&self) -> Result<()>;
+}
+
+pub trait ShelfData {
+    fn data(
+        &self,
+        shelf: &Shelf,
+    ) -> toml::Value;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,7 +344,10 @@ mod tests {
         let available_notes = shelf.get_notes(&test_subject_input[0], &test_note_input);
         assert_eq!(available_notes.len(), 3);
 
-        let all_available_notes_from_fs = shelf.get_notes_in_fs(&test_subject_input[0].note_filter(&shelf), &test_subject_input[0])?;
+        let all_available_notes_from_fs = shelf.get_notes_in_fs(
+            &test_subject_input[0].note_filter(&shelf),
+            &test_subject_input[0],
+        )?;
         assert_eq!(all_available_notes_from_fs.len(), 3);
 
         let deleted_notes = shelf.delete_notes(&test_subject_input[0], &test_note_input);

@@ -1,19 +1,21 @@
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 12pt]{{standalone}}
+pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 12pt]{standalone}
 
 % document metadata
 \author{ {{~name~}} }
-\title{ {{~note.title~}} }
-\date{ {{~date~}} }
+\title{ {{~subject.name~}} }
+\date{ {{~_date~}} }
 
-\begin{{document}}
+\begin{document}
 % Frontmatter of the class note
 
-{{~main~}}
+{{#each _master.notes}}
+\include{ {{~this._slug}}.tex}
+{{/each }}
 
-\end{{document}}
+\end{document}
 ";
 
 pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
@@ -21,7 +23,7 @@ pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=fals
 % document metadata
 \author{ {{~name~}} }
 \title{ {{~note.title~}} }
-\date{ {{~date~}} }
+\date{ {{~_date~}} }
 
 \begin{document}
 Sample content.

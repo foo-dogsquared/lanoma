@@ -16,11 +16,13 @@ mod helpers;
 pub mod items;
 pub mod profile;
 pub mod shelf;
+pub mod subjects;
 pub mod templates;
 mod threadpool;
 
-use crate::items::{Note, Subject};
-use crate::shelf::Shelf;
+use crate::items::Note;
+use crate::shelf::{Shelf, ShelfItem};
+use crate::subjects::Subject;
 use error::Error;
 
 pub type Result<T> = result::Result<T, Error>;

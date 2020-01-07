@@ -195,11 +195,11 @@ impl TemplateGetter {
         let glob = glob.as_ref();
         let mut templates: Vec<Template> = vec![];
 
-        let tex_files = globwalk::GlobWalkerBuilder::new(path, glob)
+        let files = globwalk::GlobWalkerBuilder::new(path, glob)
             .build()
             .map_err(Error::GlobParsingError)?;
-        for tex_file in tex_files {
-            if let Ok(file) = tex_file {
+        for file in files {
+            if let Ok(file) = file {
                 match Template::from_path(file.path()) {
                     Ok(v) => templates.push(v),
                     Err(_e) => continue,
