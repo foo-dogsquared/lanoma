@@ -12,7 +12,7 @@ use texture_notes_v2::error::Error;
 use texture_notes_v2::items::Note;
 use texture_notes_v2::profile::{Profile, ProfileBuilder};
 use texture_notes_v2::shelf::{ExportOptions, Shelf};
-use texture_notes_v2::subjects::{Subject, MasterNote};
+use texture_notes_v2::subjects::{MasterNote, Subject};
 use texture_notes_v2::threadpool::ThreadPool;
 use texture_notes_v2::CompilationEnvironment;
 
@@ -363,7 +363,7 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                     Ok(v) => v,
                     Err(_e) => continue,
                 };
-                // The files filter either the given command line argument or the subject metadata. 
+                // The files filter either the given command line argument or the subject metadata.
                 let _files = subject.note_filter(&shelf);
                 let files = files.as_ref().unwrap_or(&_files);
 
@@ -386,13 +386,13 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                     let command = command.clone();
                     env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
                     thread_pool.execute(move || {
-                        let mut master_note_compilation_cmd = texture_notes_v2::master_note_to_cmd(&master_note, command);
+                        let mut master_note_compilation_cmd =
+                            texture_notes_v2::master_note_to_cmd(&master_note, command);
                         let output = master_note_compilation_cmd.output();
                         println!("{:?}", output);
                     });
                     env::set_current_dir(original_dir).map_err(Error::IoError)?;
                 }
-
             }
         }
         _ => (),

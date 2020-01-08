@@ -6,8 +6,8 @@ use handlebars;
 use serde;
 
 use crate::error::Error;
-use crate::Result;
 use crate::helpers;
+use crate::Result;
 
 /// A trait for the template registry.
 /// It handles all of the template operations such as checking if the there is already a template
@@ -164,7 +164,14 @@ impl Template {
         }
     }
 
-    pub fn from_path<P, S>(path: P, name: S) -> Result<Self> where P: AsRef<Path>, S: AsRef<str> {
+    pub fn from_path<P, S>(
+        path: P,
+        name: S,
+    ) -> Result<Self>
+    where
+        P: AsRef<Path>,
+        S: AsRef<str>,
+    {
         let path = path.as_ref();
         let name = name.as_ref();
         let s = fs::read_to_string(&path).map_err(Error::IoError)?;
@@ -194,14 +201,16 @@ impl TemplateGetter {
         let file_ext = file_ext.as_ref();
         let mut templates: Vec<Template> = vec![];
 
-        let files = globwalk::GlobWalkerBuilder::new(&path, format!("**/*.{}", file_ext)).min_depth(1)
+        let files = globwalk::GlobWalkerBuilder::new(&path, format!("**/*.{}", file_ext))
+            .min_depth(1)
             .build()
             .map_err(Error::GlobParsingError)?;
         for file in files {
             if let Ok(file) = file {
                 let relpath_from_path = helpers::fs::relative_path_from(file.path(), path).unwrap();
                 let path_as_str = relpath_from_path.to_string_lossy();
-                let relpath_from_path_without_file_ext = &path_as_str[..path_as_str.len() - file_ext.len() - 1];
+                let relpath_from_path_without_file_ext =
+                    &path_as_str[..path_as_str.len() - file_ext.len() - 1];
                 match Template::from_path(file.path(), relpath_from_path_without_file_ext) {
                     Ok(v) => templates.push(v),
                     Err(_e) => continue,

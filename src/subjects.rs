@@ -352,7 +352,10 @@ impl MasterNote {
         self
     }
 
-    pub fn set_subject(&mut self, subject: &Subject) -> &mut Self {
+    pub fn set_subject(
+        &mut self,
+        subject: &Subject,
+    ) -> &mut Self {
         self.subject = subject.clone();
         self
     }

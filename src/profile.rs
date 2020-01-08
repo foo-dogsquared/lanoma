@@ -289,10 +289,8 @@ impl Profile {
             consts::MASTER_NOTE_TEMPLATE,
         )?;
 
-        let templates = TemplateGetter::get_templates(
-            self.templates_path(),
-            TEMPLATE_FILE_EXTENSION,
-        )?;
+        let templates =
+            TemplateGetter::get_templates(self.templates_path(), TEMPLATE_FILE_EXTENSION)?;
         registry.register_vec(&templates)?;
         self.templates = registry;
 
