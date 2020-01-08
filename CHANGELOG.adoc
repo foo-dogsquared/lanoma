@@ -75,7 +75,7 @@ Although, this sacrifices the multiple user aspect (though that's not needed at 
 
 * Revise the main note system. 
 The terminology is also changed as the master note system to be more intuitive. 
-** The master note is now named as `.master.tex` instead of `main.tex`. 
+** The master note is now named as `_master.tex` instead of `main.tex`. 
 ** The master note system also relies on the filtered notes of the subject. 
 This enables more control on how the master note should be generated. 
 ** The master note also makes use of the templates. 
