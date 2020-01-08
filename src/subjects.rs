@@ -14,7 +14,7 @@ use crate::shelf::{Shelf, ShelfItem};
 use crate::Result;
 
 const SUBJECT_METADATA_FILE: &str = "info.toml";
-const MASTER_NOTE_FILE: &str = ".master.tex";
+const MASTER_NOTE_FILE: &str = "_master.tex";
 
 /// A subject where it can contain notes or other subjects.
 ///
@@ -323,12 +323,12 @@ impl Subject {
     }
 }
 
-pub struct MasterNote<'a> {
+pub struct MasterNote {
     subject: Subject,
-    notes: Vec<&'a Note>,
+    notes: Vec<Note>,
 }
 
-impl<'a> MasterNote<'a> {
+impl MasterNote {
     pub fn new() -> Self {
         Self {
             subject: Subject::new(),
@@ -340,15 +340,20 @@ impl<'a> MasterNote<'a> {
         &self.subject
     }
 
-    pub fn notes(&self) -> &Vec<&'a Note> {
+    pub fn notes(&self) -> &Vec<Note> {
         &self.notes
     }
 
     pub fn push(
         &mut self,
-        note: &'a Note,
+        note: &Note,
     ) -> &mut Self {
-        self.notes.push(&note);
+        self.notes.push(note.clone());
+        self
+    }
+
+    pub fn set_subject(&mut self, subject: &Subject) -> &mut Self {
+        self.subject = subject.clone();
         self
     }
 
@@ -369,6 +374,10 @@ impl<'a> MasterNote<'a> {
         path
     }
 
+    pub fn file_name(&self) -> String {
+        MASTER_NOTE_FILE.to_string()
+    }
+
     pub fn export<S>(
         &self,
         shelf: &Shelf,
@@ -383,7 +392,7 @@ impl<'a> MasterNote<'a> {
             .create(true)
             .write(true)
             .truncate(true)
-            .open(master_note_path)
+            .open(&master_note_path)
             .map_err(Error::IoError)?;
 
         master_note_file

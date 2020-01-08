@@ -12,7 +12,7 @@ Gabriel Arazas
 :template-file-ext: hbs
 :profile-metadata-file: .profile.toml
 :subject-metadata-file: info.toml
-:master-note-file: .master.tex
+:master-note-file: _master.tex
 :master-default-template: master/_default
 
 

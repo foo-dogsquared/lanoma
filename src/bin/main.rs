@@ -12,7 +12,8 @@ use texture_notes_v2::error::Error;
 use texture_notes_v2::items::Note;
 use texture_notes_v2::profile::{Profile, ProfileBuilder};
 use texture_notes_v2::shelf::{ExportOptions, Shelf};
-use texture_notes_v2::subjects::Subject;
+use texture_notes_v2::subjects::{Subject, MasterNote};
+use texture_notes_v2::threadpool::ThreadPool;
 use texture_notes_v2::CompilationEnvironment;
 
 #[derive(Debug, StructOpt)]
@@ -149,6 +150,13 @@ pub enum Command {
             help = "The name of the template to be used for creating the notes."
         )]
         template: Option<String>,
+
+        #[structopt(
+            short,
+            long,
+            help = "The command to be used to compile the master note."
+        )]
+        command: Option<String>,
     },
 }
 
@@ -344,16 +352,24 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
             skip_compilation,
             files,
             template,
+            command,
         } => {
             let profile = Profile::from(&profile_path)?;
+            let command = command.unwrap_or(profile.compile_note_command());
 
-            for subject in subjects {
-                let subject = Subject::from_shelf(&subject, &shelf)?;
+            let thread_pool = ThreadPool::new(4);
+            for subject_name in subjects {
+                let subject = match Subject::from_shelf(&subject_name, &shelf) {
+                    Ok(v) => v,
+                    Err(_e) => continue,
+                };
+                // The files filter either the given command line argument or the subject metadata. 
                 let _files = subject.note_filter(&shelf);
                 let files = files.as_ref().unwrap_or(&_files);
 
                 let notes = shelf.get_notes_in_fs(&files, &subject)?;
-                let mut master_note = subject.create_master_note();
+                let mut master_note = MasterNote::new();
+                master_note.set_subject(&subject);
                 for note in notes.iter() {
                     master_note.push(&note);
                 }
@@ -364,7 +380,19 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                 )?;
                 master_note.export(&shelf, master_note_template)?;
 
-                if !skip_compilation {}
+                if !skip_compilation {
+                    let original_dir = env::current_dir().map_err(Error::IoError)?;
+                    let compilation_dst = subject.path_in_shelf(&shelf);
+                    let command = command.clone();
+                    env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
+                    thread_pool.execute(move || {
+                        let mut master_note_compilation_cmd = texture_notes_v2::master_note_to_cmd(&master_note, command);
+                        let output = master_note_compilation_cmd.output();
+                        println!("{:?}", output);
+                    });
+                    env::set_current_dir(original_dir).map_err(Error::IoError)?;
+                }
+
             }
         }
         _ => (),

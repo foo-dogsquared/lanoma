@@ -291,7 +291,7 @@ impl Profile {
 
         let templates = TemplateGetter::get_templates(
             self.templates_path(),
-            format!("**/*.{}", TEMPLATE_FILE_EXTENSION),
+            TEMPLATE_FILE_EXTENSION,
         )?;
         registry.register_vec(&templates)?;
         self.templates = registry;
@@ -645,9 +645,12 @@ mod tests {
         let (tmp_dir, mut profile) = tmp_profile()?;
         profile.export()?;
 
-        let mut note_template_file =
-            fs::File::create(profile.templates_path().join(format!("_default.{}", TEMPLATE_FILE_EXTENSION)))
-                .map_err(Error::IoError)?;
+        let mut note_template_file = fs::File::create(
+            profile
+                .templates_path()
+                .join(format!("_default.{}", TEMPLATE_FILE_EXTENSION)),
+        )
+        .map_err(Error::IoError)?;
         note_template_file
             .write("LOL".as_bytes())
             .map_err(Error::IoError)?;
