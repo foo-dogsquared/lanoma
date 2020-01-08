@@ -263,7 +263,6 @@ Texture Notes also allows to create *master notes*.
 
 A master note is a note combined from the filtered notes of a subject. 
 It is associated with one and only one subject. 
-It is also only dynamically generated and cannot be statically generated. 
 Each master note also has a file name of `{master-note-file}`. 
 
 To generate a master note, run the *master* subcommand. 
@@ -274,10 +273,33 @@ texture-notes master "Calculus I"
 ----
 
 By default, the master note template is `{master-default-template}`. 
+For future references, the default master template has the following content. 
+
+[source, latex]
+----
+\documentclass[class=memoir, crop=false, oneside, 12pt]{standalone}
+
+% document metadata
+\author{ {{~name~}} }
+\title{ {{~subject.name~}} }
+\date{ {{~_date~}} }
+
+\begin{document}
+% Frontmatter of the class note
+
+{{#each _master.notes}}
+\include{ {{~this._slug}}.tex}
+{{/each }}
+
+\end{document}
+----
+
+To know more about the TOML object of the master note, please refer to the <<Built-in TOML>> section. 
+
 To override the default, create a file named `{master-default-template}.{template-file-ext}` in the templates folder of the profile. 
 
 This also immediately compiles the master note. 
-To skip the compilation step, simply provide the skip compilation flag (`-s`). 
+To skip the compilation step, simply provide the skip compilation flag (`-s`/`--skip-compilation`). 
 
 
 
