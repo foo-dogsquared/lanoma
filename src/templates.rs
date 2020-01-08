@@ -6,6 +6,7 @@ use handlebars;
 use serde;
 
 use crate::error::Error;
+use crate::helpers;
 use crate::Result;
 
 /// A trait for the template registry.
@@ -163,15 +164,20 @@ impl Template {
         }
     }
 
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn from_path<P, S>(
+        path: P,
+        name: S,
+    ) -> Result<Self>
+    where
+        P: AsRef<Path>,
+        S: AsRef<str>,
+    {
         let path = path.as_ref();
+        let name = name.as_ref();
         let s = fs::read_to_string(&path).map_err(Error::IoError)?;
 
         Ok(Self {
-            name: match path.file_stem() {
-                Some(v) => v.to_string_lossy().to_string(),
-                None => return Err(Error::ValueError),
-            },
+            name: name.to_string(),
             s,
         })
     }
@@ -185,22 +191,27 @@ impl TemplateGetter {
     /// Get a bunch of templates.
     pub fn get_templates<P, S>(
         path: P,
-        glob: S,
+        file_ext: S,
     ) -> Result<Vec<Template>>
     where
         P: AsRef<Path>,
         S: AsRef<str>,
     {
         let path = path.as_ref();
-        let glob = glob.as_ref();
+        let file_ext = file_ext.as_ref();
         let mut templates: Vec<Template> = vec![];
 
-        let tex_files = globwalk::GlobWalkerBuilder::new(path, glob)
+        let files = globwalk::GlobWalkerBuilder::new(&path, format!("**/*.{}", file_ext))
+            .min_depth(1)
             .build()
             .map_err(Error::GlobParsingError)?;
-        for tex_file in tex_files {
-            if let Ok(file) = tex_file {
-                match Template::from_path(file.path()) {
+        for file in files {
+            if let Ok(file) = file {
+                let relpath_from_path = helpers::fs::relative_path_from(file.path(), path).unwrap();
+                let path_as_str = relpath_from_path.to_string_lossy();
+                let relpath_from_path_without_file_ext =
+                    &path_as_str[..path_as_str.len() - file_ext.len() - 1];
+                match Template::from_path(file.path(), relpath_from_path_without_file_ext) {
                     Ok(v) => templates.push(v),
                     Err(_e) => continue,
                 }

@@ -16,15 +16,20 @@ mod helpers;
 pub mod items;
 pub mod profile;
 pub mod shelf;
+pub mod subjects;
 pub mod templates;
-mod threadpool;
+pub mod threadpool;
 
-use crate::items::{Note, Subject};
-use crate::shelf::Shelf;
+use crate::items::Note;
+use crate::shelf::{Shelf, ShelfItem};
+use crate::subjects::{MasterNote, Subject};
 use error::Error;
 
 pub type Result<T> = result::Result<T, Error>;
-
+// Making it static since it does not handle any templates anyway and only here for rendering the string.
+lazy_static! {
+    static ref HANDLEBARS_REG: handlebars::Handlebars = handlebars::Handlebars::new();
+}
 /// A struct for handling the parameters for the compilation environment.
 ///
 /// This data structure is made for abstracting the compilation process making it as a separate component.
@@ -86,9 +91,9 @@ impl CompilationEnvironment {
     }
 
     /// Executes the compilation process.
-    /// This does not consume the struct.
+    /// This also consume the struct.
     pub fn compile(
-        &self,
+        mut self,
         shelf: &Shelf,
     ) -> Result<Vec<Note>> {
         let original_dir = env::current_dir().map_err(Error::IoError)?;
@@ -96,30 +101,20 @@ impl CompilationEnvironment {
         env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
 
         // this will serve as a task queue for the threads to be spawned
-        let compilation_environment = sync::Arc::new(sync::Mutex::new(self.clone()));
+        let thread_count = self.thread_count;
+        let compilation_environment = sync::Arc::new(sync::Mutex::new(self));
         let compiled_notes = sync::Arc::new(sync::Mutex::new(vec![]));
         let mut threads = vec![];
 
-        for _i in 0..self.thread_count {
+        for _i in 0..thread_count {
             let compilation_environment_mutex = sync::Arc::clone(&compilation_environment);
             let compiled_notes_mutex = sync::Arc::clone(&compiled_notes);
             let thread = thread::spawn(move || {
                 let mut compilation_environment = compilation_environment_mutex.lock().unwrap();
                 let mut compiled_notes = compiled_notes_mutex.lock().unwrap();
-                let handlebars_reg = handlebars::Handlebars::new();
 
                 while let Some(note) = compilation_environment.notes.pop() {
-                    let resulting_toml = format!("note = '{}'", note.file_name());
-                    let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
-                    let command_vector = handlebars_reg
-                        .render_template(&compilation_environment.command, &note_as_toml)
-                        .unwrap();
-                    let mut command_iter = command_vector.split_whitespace();
-
-                    let mut command_process = process::Command::new(command_iter.next().unwrap());
-                    for arg in command_iter.into_iter() {
-                        command_process.arg(arg);
-                    }
+                    let mut command_process = note_to_cmd(&note, &compilation_environment.command);
 
                     let command_output = match command_process.output().map_err(Error::IoError) {
                         Ok(v) => v,
@@ -147,4 +142,49 @@ impl CompilationEnvironment {
             Err(_e) => Err(Error::ValueError),
         }
     }
+}
+
+pub fn str_as_cmd<S>(string: S) -> process::Command
+where
+    S: AsRef<str>,
+{
+    let string = string.as_ref();
+    let mut command_iter = string.split_whitespace();
+
+    let mut command_process = process::Command::new(command_iter.next().unwrap());
+    for arg in command_iter.into_iter() {
+        command_process.arg(arg);
+    }
+
+    command_process
+}
+
+pub fn note_to_cmd<S>(
+    note: &Note,
+    cmd: S,
+) -> process::Command
+where
+    S: AsRef<str>,
+{
+    let cmd = cmd.as_ref();
+    let resulting_toml = format!("note = '{}'", note.file_name());
+    let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
+    let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
+
+    str_as_cmd(command_string)
+}
+
+pub fn master_note_to_cmd<S>(
+    master_note: &MasterNote,
+    cmd: S,
+) -> process::Command
+where
+    S: AsRef<str>,
+{
+    let cmd = cmd.as_ref();
+    let resulting_toml = format!("note = '{}'", master_note.file_name());
+    let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
+    let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
+
+    str_as_cmd(command_string)
 }

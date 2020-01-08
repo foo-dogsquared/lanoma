@@ -9,8 +9,9 @@ use toml::{self, Value};
 use crate::consts;
 use crate::error::Error;
 use crate::helpers;
-use crate::items::{Note, Subject};
-use crate::shelf::Shelf;
+use crate::items::Note;
+use crate::shelf::{Shelf, ShelfItem};
+use crate::subjects::{MasterNote, Subject};
 use crate::templates::{self, TemplateGetter, TemplateRegistry};
 use crate::Result;
 
@@ -18,9 +19,10 @@ use crate::Result;
 pub const PROFILE_METADATA_FILENAME: &str = ".profile.toml";
 pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = ".templates";
 
+pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
 // TODO: Implement the master note templating system.
-pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "_master";
+pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master/_default";
 
 /// A basic macro for modifying a TOML table.
 macro_rules! modify_toml_table {
@@ -287,7 +289,8 @@ impl Profile {
             consts::MASTER_NOTE_TEMPLATE,
         )?;
 
-        let templates = TemplateGetter::get_templates(self.templates_path(), "*.tex")?;
+        let templates =
+            TemplateGetter::get_templates(self.templates_path(), TEMPLATE_FILE_EXTENSION)?;
         registry.register_vec(&templates)?;
         self.templates = registry;
 
@@ -337,6 +340,30 @@ impl Profile {
         note_as_toml
     }
 
+    fn create_toml_from_master_note(
+        &self,
+        shelf: &Shelf,
+        master_note: &MasterNote,
+    ) -> toml::Value {
+        let mut master_note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
+        let mut notes_toml: Vec<toml::Value> = vec![];
+
+        for note in master_note.notes().iter() {
+            notes_toml.push(self.create_toml_from_note(&shelf, master_note.subject(), &note));
+        }
+
+        let master_note_path = master_note.path_in_shelf(&shelf);
+        modify_toml_table! {master_note_as_toml,
+            ("notes", notes_toml),
+            ("subject", self.create_toml_from_subject(&shelf, master_note.subject())),
+            ("_path", master_note.path().to_string_lossy()),
+            ("_relpath_from_shelf", helpers::fs::relative_path_from(master_note_path.clone(), &shelf.path()).unwrap()),
+            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), master_note_path).unwrap())
+        };
+
+        master_note_as_toml
+    }
+
     /// Returns a string from a Handlebars template.
     ///
     /// While creating the metadata from the profile, it will override certain fields
@@ -369,6 +396,31 @@ impl Profile {
         };
 
         self.templates.render(template_name, &metadata)
+    }
+
+    pub fn return_string_from_master_note_template<S>(
+        &self,
+        shelf: &Shelf,
+        master_note: &MasterNote,
+        template: &Option<S>,
+    ) -> Result<String>
+    where
+        S: AsRef<str>,
+    {
+        let subject_as_toml = self.create_toml_from_subject(&shelf, &master_note.subject());
+        let master_note_as_toml = self.create_toml_from_master_note(&shelf, &master_note);
+        let mut metadata = toml::Value::try_from(self.metadata.clone()).unwrap();
+        modify_toml_table! {metadata,
+            ("subject", subject_as_toml),
+            ("_master", master_note_as_toml),
+            ("_date", chrono::Local::now().format("%F").to_string())
+        }
+        let template_name = match template.as_ref() {
+            Some(v) => v.as_ref(),
+            None => PROFILE_MASTER_NOTE_TEMPLATE_NAME,
+        };
+
+        self.templates.render(template_name, metadata)
     }
 
     /// Returns the metadata file path of the profile.
@@ -591,9 +643,12 @@ mod tests {
         let (tmp_dir, mut profile) = tmp_profile()?;
         profile.export()?;
 
-        let mut note_template_file =
-            fs::File::create(profile.templates_path().join("_default.tex"))
-                .map_err(Error::IoError)?;
+        let mut note_template_file = fs::File::create(
+            profile
+                .templates_path()
+                .join(format!("_default.{}", TEMPLATE_FILE_EXTENSION)),
+        )
+        .map_err(Error::IoError)?;
         note_template_file
             .write("LOL".as_bytes())
             .map_err(Error::IoError)?;

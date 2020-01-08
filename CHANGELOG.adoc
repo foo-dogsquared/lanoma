@@ -24,6 +24,12 @@ On a related note, if the resulting path is not valid, any commands will cause a
 * Add an optional metadata for the subjects through `info.toml`. 
 It is also used for the templates that makes use of the subject metadata. 
 
+* Add a simple note filter system for the subjects. 
+This enables narrowing the notes without interruption with the rest of the filesystem. 
+
+* A `master` subcommand. 
+A dedicated subcommand for interacting with the master note system. 
+
 * A user manual for the program. 
 It is created with an https://asciidoctor.org/[Asciidoctor] document. 
 
@@ -41,10 +47,10 @@ This is due to the limitations of https://github.com/clap-rs/clap[`clap`].
 (I think it's not that large of a compromise anyway.) 
 
 * Revise the binder system. 
-From this point, the binder is now referred to as the **shelf**. 
+From this point, the binder is now referred to as the **shelf** or the **base directory**. 
 ** Make the shelf system modular for easier maintenance. 
 ** A shelf is still composed of **subjects** (terminology may change in the future). 
-Each subject now requires a specific metadata file with required keys. 
+Each subject can have a specific metadata file. 
 ** Remove the database entirely. 
 Now, the binder system is entirely dependent of the filesystem. 
 
@@ -58,13 +64,21 @@ It can also can be made into multiple path components instead of representing on
 This allows for more flexibility and intuition in interacting with the program. 
 
 * Templates support from https://docs.python.org/3/library/string.html#custom-string-formatting[Python template strings] to https://github.com/sunng87/handlebars-rust[Handlebars Rust implementation]. 
+** The templates are also `.hbs` files in the templates folder. 
 
 * Restructure the profile directory structure for neater custom configurations and easier organization. 
-** The profile is instead stored with the respective config folder of the OS. 
+** The default profile location is stored with the respective config folder of the OS. 
 This allows Texture Notes to be simpler and modular. 
 Although, this sacrifices the multiple user aspect (though that's not needed at this point). 
 ** The profile metadata filename has been changed to `.profile.toml`. 
 ** Templates has been moved to its own folder at `.templates/`. 
+
+* Revise the main note system. 
+The terminology is also changed as the master note system to be more intuitive. 
+** The master note is now named as `_master.tex` instead of `main.tex`. 
+** The master note system also relies on the filtered notes of the subject. 
+This enables more control on how the master note should be generated. 
+** The master note also makes use of the templates. 
 
 
 === Removed

@@ -9,8 +9,11 @@ Gabriel Arazas
 
 :default-template-name: _default
 :templates-folder: .templates
+:template-file-ext: hbs
 :profile-metadata-file: .profile.toml
 :subject-metadata-file: info.toml
+:master-note-file: _master.tex
+:master-default-template: master/_default
 
 
 
@@ -55,6 +58,9 @@ Remove a subject or a note.
 
 *compile*::
 Compile a set of notes from a subject. 
+
+*master*:: 
+Master note-related interactions. 
 
 *help*::
 Print the help section of the subcommand or the application. 
@@ -133,12 +139,15 @@ You can refer to the Calculus I from the first year folder in different ways ass
 ----
 texture-notes add notes "Year 1/Semester 1/Calculus I" -- NOTES...
 texture-notes add notes "year-1/semester-1/calculus-i" -- NOTES...
+texture-notes add notes "year-1/semester-1/Calculus I" -- NOTES...
 ----
 
-As long as the resulting kebab-case of each component in the path is the same, it is considered as the same subject. 
+As long as the resulting kebab-case of each component in the path is the same with the folder, it is considered as the same subject in the filesystem. 
+If the `name` key in the metadata file is not present or valid, the name of the subject is referred to by the last path component. 
 For certain cases, this can be distinct when creating notes or the subject. 
 
 The same applies for referring to notes. 
+As long as the resulting kebab-case is the same, it refers to the same note in the filesystem. 
 
 
 === Note templates 
@@ -147,12 +156,13 @@ Texture Notes has a simple templating system for your LaTeX documents.
 As briefly mentioned, the templates are located in a profile specifically in the `{templates-folder}` folder. 
 
 Internally, the templates is represented as a key-value store. 
-The key-value store comes from the folder that expects a list of `.tex` files with the file name as the key. 
+The key-value store comes from the folder that expects a list of `.{template-file-ext}` files with the file name as the key. 
 
-The template also uses https://crates.io/crates/handlebars[a Rust implementation of Handlebars] as the templating language. 
+Texture Notes use https://crates.io/crates/handlebars[a Rust implementation of Handlebars] as the templating language. 
+It is definitely important to make sure the templates is valid. 
 
-The template store primarily use the `{default-template-name}` template as the default. 
-It also has the following default content. 
+The template store primarily use the `{default-template-name}` template as the default key. 
+The `{default-template-name}` template has the following value. 
 
 [source, latex]
 ----
@@ -170,9 +180,9 @@ Sample content.
 \end{document}
 ----
 
-To override the default template, just create `{default-template-name}.tex` on the templates folder. 
+To override the default template, just create `{default-template-name}.{template-file-ext}` on the templates folder. 
 
-As previously said, it uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
+As previously said, Texture Notes uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
 To set dynamic values, a Handlebars expression delimited by two pairs of curly braces (`{{$EXPR}}`). 
 Practically in using Texture Notes, these are often used to refer to a https://github.com/toml-lang/toml[TOML] value. 
 
@@ -200,13 +210,13 @@ _date = "2019-01-06"
 [note]
 title = "Introduction to limits"
 _file = "introduction-to-limits.tex"
-// ...
+# ...
 _relpath_from_shelf = "introduction-to-limits.tex"
 
 [subject]
 name = "Calculus I"
 _file = "calculus"
-// ...
+# ...
 _relpath_from_shelf = ""
 # The rest of the keys in `info.toml` of the subject.
 ----
@@ -245,6 +255,51 @@ You can also compile certain files either by:
 The command line option has the highest precedence. 
 * Setting a key in `{subject-metadata-file}` named *_files* which is an array of strings (file globs). 
 Even if there is a `_files` key, the command line option will override the note filter. 
+
+
+=== Master notes 
+
+Texture Notes also allows to create *master notes*. 
+
+A master note is a note combined from the filtered notes of a subject. 
+It is associated with one and only one subject. 
+Each master note also has a file name of `{master-note-file}`. 
+
+To generate a master note, run the *master* subcommand. 
+
+[source, shell]
+----
+texture-notes master "Calculus I"
+----
+
+By default, the master note template is `{master-default-template}`. 
+For future references, the default master template has the following content. 
+
+[source, latex]
+----
+\documentclass[class=memoir, crop=false, oneside, 12pt]{standalone}
+
+% document metadata
+\author{ {{~name~}} }
+\title{ {{~subject.name~}} }
+\date{ {{~_date~}} }
+
+\begin{document}
+% Frontmatter of the class note
+
+{{#each _master.notes}}
+\include{ {{~this._slug}}.tex}
+{{/each }}
+
+\end{document}
+----
+
+To know more about the TOML object of the master note, please refer to the <<Built-in TOML>> section. 
+
+To override the default, create a file named `{master-default-template}.{template-file-ext}` in the templates folder of the profile. 
+
+This also immediately compiles the master note. 
+To skip the compilation step, simply provide the skip compilation flag (`-s`/`--skip-compilation`). 
 
 
 
@@ -299,25 +354,19 @@ https://github.com/foo-dogsquared/texture-notes-v2/issues
 [appendix]
 == Built-in TOML 
 
-While creating a note, a https://github.com/toml-lang/toml[TOML] is formed to be integrated with the template. 
-This is derived from multiple sources such as the profile, subject, and the note. 
+Most component (i.e., subjects, notes) in Texture Notes has a resulting TOML associated with it. 
+This is mostly used for creating notes (and master notes). 
 
-The resulting TOML first get the data from the profile metadata file (`{profile-metadata-file}`). 
 
-Next, the TOML for the note is formed. 
-This is then assigned to the *note* table of the resulting TOML. 
+=== Profile object (TOML) 
 
-The note TOML also comes with the following keys with dynamic values. 
+For the profile, the TOML is simply the metadata file. 
+The TOML from the profile is often where building the resulting TOML first starts. 
 
-* `title` - The title of the note. 
-* `_slug` - The resulting title in kebab case. 
-* `_file` - The resulting file name of the note. 
-It is basically the note title in kebab case appended with `.tex`. 
-* `_path` - The resulting path of the note. 
-* `_relpath_to_shelf` - The resulting relative path from the directory of the note to the shelf. 
-* `_relpath_from_shelf` - The resulting relative path from the shelf to the directory of the note. 
 
-Lastly, the TOML for the subject is formed. 
+=== Subject object 
+
+For the subject, there are two data sources: a dynamic TOML and the data from the metadata file. 
 If the subject has a metadata file (`{subject-metadata-file}`), it will build the TOML from there. 
 The following keys are then set with dynamic values and assign under the profile TOML as a table named *subject*. 
 
@@ -330,6 +379,77 @@ If there is `{subject-metadata-file}` with the field, it will use it instead.
 * `_path` - The path of the subject. 
 * `_relpath_to_shelf` - The resulting relative path from the subject directory to the shelf. 
 * `_relpath_from_shelf` - The resulting relative path from the shelf to the subject directory. 
+
+
+=== Note object 
+
+The note also has a resulting TOML with the following keys. 
+
+* `title` - The title of the note. 
+* `_slug` - The resulting title in kebab case. 
+* `_file` - The resulting file name of the note. 
+It is basically the note title in kebab case appended with `.tex`. 
+* `_path` - The resulting path of the note. 
+* `_relpath_to_shelf` - The resulting relative path from the directory of the note to the shelf. 
+* `_relpath_from_shelf` - The resulting relative path from the shelf to the directory of the note. 
+
+
+=== Master note object 
+
+The master note is mostly similar to a note TOML data. 
+
+* `notes` - The filtered notes. 
+It contains the individual note TOML. 
+* `subject` - The subject of the master note. 
+It contains the subject TOML. 
+* `_path` - The path of the master note. 
+* `_relpath_to_shelf` - The relative path from the directory of the master note to the shelf. 
+* `_relpath_from_shelf` - The inverse of `_relpath_to_shelf`. The relative path from the shelf to the directory of the master note. 
+
+
+=== During note creation 
+
+The resulting TOML of the different components are different from one process to another. 
+In creating a note, the following TOML is formed. 
+
+[source, toml]
+----
+name = "NAME"
+version = "VERSION"
+_date = "2020-01-07"
+
+# The rest of the keys in `profile.toml`. 
+
+# The subject TOML
+[subject]
+# ...
+
+# The note TOML
+[note]
+# ...
+----
+
+
+=== During master note creation 
+
+The resulting TOML when creating the master note is similar to the resulting TOML from note creation. 
+
+[source, toml]
+----
+name = "NAME"
+version = "VERSION"
+_date = "2020-01-07"
+
+# The rest of the keys in `profile.toml`. 
+
+# The subject TOML
+[subject]
+# ...
+
+# The master note TOML
+[_master]
+# ...
+----
 
 
 
