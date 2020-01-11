@@ -1,12 +1,12 @@
-use std::fs::{self, DirBuilder};
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use globwalk;
 
 use crate::error::Error;
 use crate::helpers;
-use crate::items::Note;
-use crate::subjects::Subject;
+use crate::Object;
 use crate::Result;
 
 /// A struct holding the common export options.
@@ -44,57 +44,14 @@ pub struct Shelf {
     path: PathBuf,
 }
 
-/// A builder for the shelf instance.
-/// Setting the data does not take the ownership (or consume) the builder to enable dynamic setting.
-#[derive(Debug, Clone)]
-pub struct ShelfBuilder {
-    use_db: bool,
-    path: Option<PathBuf>,
-}
-
-impl ShelfBuilder {
-    /// Create a new shelf builder instance.
-    pub fn new() -> Self {
-        Self {
-            use_db: false,
-            path: None,
-        }
-    }
-
-    /// Sets the path of the shelf.
-    pub fn path<P>(
-        &mut self,
-        path: P,
-    ) -> &mut Self
+impl Shelf {
+    /// Create a new shelf instance.
+    pub fn new<P>(path: P) -> Self
     where
         P: AsRef<Path>,
     {
-        let path = path.as_ref().to_path_buf();
-        self.path = Some(path);
-
-        self
-    }
-
-    /// Create the shelf instance from the builder.
-    /// Also consumes the builder.
-    pub fn build(self) -> Result<Shelf> {
-        let mut shelf = Shelf::new();
-
-        if self.path.is_some() {
-            let path = self.path.unwrap();
-
-            shelf.set_path(path)?;
-        }
-
-        Ok(shelf)
-    }
-}
-
-impl Shelf {
-    /// Create a new shelf instance.
-    pub fn new() -> Self {
         Self {
-            path: PathBuf::new(),
+            path: path.as_ref().into(),
         }
     }
 
@@ -154,231 +111,116 @@ impl Shelf {
 
         Ok(())
     }
-
-    /// Gets the subjects in the shelf filesystem.
-    pub fn get_subjects<'s>(
-        &self,
-        subjects: &'s Vec<Subject>,
-    ) -> Vec<&'s Subject> {
-        subjects
-            .iter()
-            .filter(|&subject| subject.is_path_exists(&self))
-            .collect()
-    }
-
-    /// Creates its folder structure on the filesystem.
-    /// It can also add the subject instance in the database, if specified.
-    ///
-    /// Returns the subject instance that succeeded in its creation process.
-    pub fn create_subjects<'s>(
-        &self,
-        subjects: &'s Vec<Subject>,
-    ) -> Vec<&'s Subject> {
-        subjects
-            .iter()
-            .filter(|&subject| subject.export(&self).is_ok())
-            .collect()
-    }
-
-    /// Deletes the subject instance in the shelf.
-    pub fn delete_subjects<'s>(
-        &self,
-        subjects: &'s Vec<Subject>,
-    ) -> Vec<&'s Subject> {
-        subjects
-            .iter()
-            .filter(|&subject| subject.delete(&self).is_ok())
-            .collect()
-    }
-
-    /// Get the valid notes in the shelf.
-    pub fn get_notes<'n>(
-        &self,
-        subject: &Subject,
-        notes: &'n Vec<Note>,
-    ) -> Vec<&'n Note> {
-        notes
-            .iter()
-            .filter(|&note| note.is_path_exists(&subject, &self))
-            .collect()
-    }
-
-    /// Get the notes in the shelf filesystem.
-    pub fn get_notes_in_fs(
-        &self,
-        file_globs: &Vec<String>,
-        subject: &Subject,
-    ) -> Result<Vec<Note>> {
-        let mut notes: Vec<Note> = vec![];
-
-        let subject_path = subject.path_in_shelf(&self);
-
-        let tex_files = globwalk::GlobWalkerBuilder::from_patterns(subject_path, &file_globs)
-            .build()
-            .map_err(Error::GlobParsingError)?;
-
-        for file in tex_files {
-            if let Ok(file) = file {
-                let note_path = file.path();
-
-                let file_stem = note_path.file_stem().unwrap().to_string_lossy();
-
-                let note_instance = Note::from(file_stem, &subject, &self)?.unwrap();
-
-                notes.push(note_instance);
-            }
-        }
-
-        Ok(notes)
-    }
-
-    /// Create the note in the shelf in the filesystem.
-    ///
-    /// If specified, it can also add the note in the shelf database.
-    ///
-    /// By default, the method will not return an error if it's already exported.
-    /// However, you can set the method to be strict on it.
-    pub fn create_note(
-        &self,
-        subject: &Subject,
-        note: &Note,
-        value: &str,
-        export_options: &ExportOptions,
-    ) -> Result<()> {
-        note.export(&subject, &self, &value, export_options.strict)
-    }
-
-    /// Creates the files of the note instances in the shelf.
-    pub fn create_notes<'n>(
-        &self,
-        subject: &Subject,
-        notes: &'n Vec<Note>,
-        value: &str,
-        export_options: &ExportOptions,
-    ) -> Vec<&'n Note> {
-        notes
-            .iter()
-            .filter(|&note| {
-                note.export(&subject, &self, &value, export_options.strict)
-                    .is_ok()
-            })
-            .collect()
-    }
-
-    /// Deletes the entry and filesystem of the note instances in the shelf.
-    pub fn delete_notes<'n>(
-        &self,
-        subject: &Subject,
-        notes: &'n Vec<Note>,
-    ) -> Vec<&'n Note> {
-        notes
-            .iter()
-            .filter(|&note| note.delete(&subject, &self).is_ok())
-            .collect()
-    }
-
-    // TODO: Update operation for the subjects and the notes
 }
 
-pub trait ShelfItem {
-    fn path_in_shelf(&self) -> PathBuf;
-    fn is_path_exists(&self) -> bool;
-    fn export(&self) -> Result<()>;
-    fn delete(&self) -> Result<()>;
+/// A trait implementing the shelf operations.
+pub trait ShelfItem<S> {
+    fn path_in_shelf(
+        &self,
+        params: S,
+    ) -> PathBuf;
+    fn is_path_exists(
+        &self,
+        params: S,
+    ) -> bool;
+    fn export(
+        &self,
+        params: S,
+    ) -> Result<()>;
+    fn delete(
+        &self,
+        params: S,
+    ) -> Result<()>;
 }
 
-pub trait ShelfData {
+/// A trait implementing the object with the additional shelf-related data.
+pub trait ShelfData<S>: Object + ShelfItem<S> {
     fn data(
         &self,
-        shelf: &Shelf,
+        params: S,
     ) -> toml::Value;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::consts;
+    use crate::note::Note;
+    use crate::subjects::Subject;
     use tempfile;
 
-    fn tmp_shelf() -> Result<(tempfile::TempDir, Shelf)> {
+    fn tmp_shelf() -> Result<Shelf> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
-        let mut shelf_builder = ShelfBuilder::new();
-        shelf_builder.path(tmp_dir.path());
+        let shelf = Shelf::from(tmp_dir)?;
 
-        Ok((tmp_dir, shelf_builder.build()?))
+        Ok(shelf)
     }
 
     #[test]
     fn basic_note_usage() -> Result<()> {
-        let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
+        let mut shelf = tmp_shelf()?;
         let export_options = ExportOptions::new();
 
         assert!(shelf.export().is_ok());
 
-        let test_subject_input =
-            Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Algebra/Precalculus"], &shelf);
-        let test_note_input = Note::from_vec_loose(
-            &vec![
-                "Precalculus Quick Review",
-                "Introduction to Integrations",
-                "Introduction to Limits",
-            ],
-            &test_subject_input[0],
-            &shelf,
-        )?;
+        let test_subject_input: Vec<Subject> = vec!["Calculus", "Algebra", "Algebra/Precalculus"]
+            .into_iter()
+            .map(|subject| Subject::new(subject))
+            .collect();
+        let test_note_input: Vec<Note> = vec![
+            "Precalculus Quick Review",
+            "Introduction to Integrations",
+            "Introduction to Limits",
+        ]
+        .into_iter()
+        .map(|note| Note::new(note))
+        .collect();
 
-        let created_subjects = shelf.create_subjects(&test_subject_input);
+        let created_subjects: Vec<Subject> = test_subject_input
+            .into_iter()
+            .filter(|subject| subject.export(&shelf).is_ok())
+            .collect();
         assert_eq!(created_subjects.len(), 3);
 
-        let created_notes = shelf.create_notes(
-            &test_subject_input[0],
-            &test_note_input,
-            consts::NOTE_TEMPLATE,
-            &export_options,
-        );
-        assert_eq!(created_notes.len(), 3);
+        // let created_notes = shelf.create_notes(
+        //     &test_subject_input[0],
+        //     &test_note_input,
+        //     consts::NOTE_TEMPLATE,
+        //     &export_options,
+        // );
+        // assert_eq!(created_notes.len(), 3);
 
-        let available_subjects = shelf.get_subjects(&test_subject_input);
-        assert_eq!(available_subjects.len(), 3);
+        // let available_notes = shelf.get_notes(&test_subject_input[0], &test_note_input);
+        // assert_eq!(available_notes.len(), 3);
 
-        let available_notes = shelf.get_notes(&test_subject_input[0], &test_note_input);
-        assert_eq!(available_notes.len(), 3);
+        // let all_available_notes_from_fs = shelf.get_notes_in_fs(
+        //     &test_subject_input[0].note_filter(&shelf),
+        //     &test_subject_input[0],
+        // )?;
+        // assert_eq!(all_available_notes_from_fs.len(), 3);
 
-        let all_available_notes_from_fs = shelf.get_notes_in_fs(
-            &test_subject_input[0].note_filter(&shelf),
-            &test_subject_input[0],
-        )?;
-        assert_eq!(all_available_notes_from_fs.len(), 3);
+        // let deleted_notes = shelf.delete_notes(&test_subject_input[0], &test_note_input);
+        // assert_eq!(deleted_notes.len(), 3);
 
-        let deleted_notes = shelf.delete_notes(&test_subject_input[0], &test_note_input);
-        assert_eq!(deleted_notes.len(), 3);
-
-        // It became 2 because the algebra subject is deleted along with the precalculus subject.
-        let deleted_subjects = shelf.delete_subjects(&test_subject_input);
-        assert_eq!(deleted_subjects.len(), 2);
+        // // It became 2 because the algebra subject is deleted along with the precalculus subject.
+        // let deleted_subjects = shelf.delete_subjects(&test_subject_input);
+        // assert_eq!(deleted_subjects.len(), 2);
 
         Ok(())
     }
 
     #[test]
     fn subject_instances_test() -> Result<()> {
-        let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
+        let mut shelf = tmp_shelf()?;
 
         let export_options: ExportOptions = ExportOptions::new();
 
         assert!(shelf.export().is_ok());
 
-        let test_subject: Subject = Subject::from("Mathematics".to_string());
-        assert_eq!(test_subject.is_valid(&shelf), false);
+        let test_subject: Subject = Subject::new("Mathematics");
+        assert_eq!(test_subject.is_path_exists(&shelf), false);
 
         test_subject.export(&shelf)?;
-        assert_eq!(test_subject.is_valid(&shelf), true);
         assert_eq!(test_subject.is_path_exists(&shelf), true);
-
-        shelf.create_subjects(&vec![test_subject.clone()]);
-        assert_eq!(test_subject.is_valid(&shelf), true);
-        assert_eq!(test_subject.is_path_exists(&shelf), true);
-
         Ok(())
     }
 
@@ -386,11 +228,7 @@ mod tests {
     #[should_panic]
     fn invalid_note_export() {
         let note_path = PathBuf::from("./test/invalid/location/is/invalid");
-        let mut test_case_builder = ShelfBuilder::new();
-        test_case_builder.path(note_path);
-
-        let mut test_case = test_case_builder.build().unwrap();
-
+        let mut test_case = Shelf::new(note_path);
         assert!(test_case.export().is_ok());
     }
 

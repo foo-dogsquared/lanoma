@@ -1,20 +1,23 @@
-use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::{self, Write};
+use std::collections::HashMap;
+use std::fs::{self, DirBuilder};
+use std::io;
 use std::path::{self, PathBuf};
-use std::str::FromStr;
 
 use chrono::{self};
 use serde::{Deserialize, Serialize};
 use toml;
 
+use crate::config;
 use crate::error::Error;
 use crate::helpers;
-use crate::items::Note;
-use crate::shelf::{Shelf, ShelfItem};
-use crate::Result;
+use crate::note::Note;
+use crate::shelf::{Shelf, ShelfData, ShelfItem};
+use crate::{Object, Result};
+
+#[macro_use]
+use crate::{modify_toml_table, upsert_toml_table};
 
 const SUBJECT_METADATA_FILE: &str = "info.toml";
-const MASTER_NOTE_FILE: &str = "_master.tex";
 
 /// A subject where it can contain notes or other subjects.
 ///
@@ -24,25 +27,111 @@ pub struct Subject {
     name: String,
 }
 
-impl Subject {
-    /// Creates a new subject instance.
-    pub fn new() -> Self {
-        Self {
-            name: String::new(),
-        }
+impl Object for Subject {
+    fn data(&self) -> toml::Value {
+        let mut subject_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
+        modify_toml_table! {subject_as_toml,
+            ("name", self.name()),
+            ("_slug", helpers::string::kebab_case(&self.name())),
+            ("_path", self.path())
+        };
+
+        subject_as_toml
+    }
+}
+
+impl AsRef<str> for Subject {
+    fn as_ref(&self) -> &str {
+        self.full_name().as_ref()
+    }
+}
+
+impl ShelfData<&Shelf> for Subject {
+    fn data(
+        &self,
+        shelf: &Shelf,
+    ) -> toml::Value {
+        let mut subject_as_toml = match self.get_config(&shelf) {
+            Ok(v) => toml::Value::try_from(v).unwrap(),
+            Err(_e) => toml::Value::from(HashMap::<String, toml::Value>::new()),
+        };
+
+        let subject_path = self.path_in_shelf(&shelf);
+        upsert_toml_table! {subject_as_toml,
+            ("name", self.name())
+        };
+        modify_toml_table! {subject_as_toml,
+            ("_slug", helpers::string::kebab_case(&self.name())),
+            ("_path", subject_path.clone()),
+            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), subject_path.clone()).unwrap().to_str().unwrap()),
+            ("_relpath_from_shelf", helpers::fs::relative_path_from(subject_path, &shelf.path()).unwrap().to_str().unwrap())
+        };
+
+        subject_as_toml
+    }
+}
+
+impl ShelfItem<&Shelf> for Subject {
+    /// Returns the associated path with the given shelf.
+    fn path_in_shelf(
+        &self,
+        shelf: &Shelf,
+    ) -> PathBuf {
+        let mut path = shelf.path();
+        path.push(self.path());
+
+        path
     }
 
-    /// Create a subject instance from the given string.
+    /// Checks if the associated path exists from the shelf.
+    fn is_path_exists(
+        &self,
+        shelf: &Shelf,
+    ) -> bool {
+        self.path_in_shelf(&shelf).is_dir()
+    }
+
+    /// Exports the instance in the filesystem.
+    fn export(
+        &self,
+        shelf: &Shelf,
+    ) -> Result<()> {
+        if !shelf.is_valid() {
+            return Err(Error::UnexportedShelfError(shelf.path()));
+        }
+
+        let path = self.path_in_shelf(&shelf);
+        let dir_builder = DirBuilder::new();
+
+        if !self.is_path_exists(&shelf) {
+            helpers::fs::create_folder(&dir_builder, &path)?;
+        }
+
+        Ok(())
+    }
+
+    /// Deletes the associated folder in the shelf filesystem.
+    fn delete(
+        &self,
+        shelf: &Shelf,
+    ) -> Result<()> {
+        let path = self.path_in_shelf(&shelf);
+        fs::remove_dir_all(path).map_err(Error::IoError)
+    }
+}
+
+impl Subject {
+    /// Create a subject instance with the given string.
     /// Take note the input will be normalized for paths.
     ///
     /// # Example
     ///
     /// ```
-    /// use texture_notes_v2::items::{Subject};
+    /// use texture_notes_v2::subjects::Subject;
     ///
-    /// assert_eq!(Subject::from("Mathematics").name(), Subject::from("Mathematics/Calculus/..").name())
+    /// assert_eq!(Subject::new("Mathematics").name(), Subject::new("Mathematics/Calculus/..").name())
     /// ```
-    pub fn from<S>(name: S) -> Self
+    pub fn new<S>(name: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -64,8 +153,8 @@ impl Subject {
         name: &str,
         shelf: &Shelf,
     ) -> Result<Self> {
-        let subject = Subject::from(name);
-        if !subject.is_valid(&shelf) {
+        let subject = Subject::new(name);
+        if !subject.is_path_exists(&shelf) {
             return Err(Error::InvalidSubjectError(subject.path_in_shelf(&shelf)));
         }
 
@@ -98,7 +187,7 @@ impl Subject {
             .map(
                 |subject| match Subject::from_shelf(subject.as_ref(), &notes) {
                     Ok(v) => v,
-                    Err(_e) => Subject::from(subject.as_ref().to_string()),
+                    Err(_e) => Subject::new(subject.as_ref().to_string()),
                 },
             )
             .collect()
@@ -121,56 +210,23 @@ impl Subject {
 
     /// Returns the subject path.
     pub fn path(&self) -> PathBuf {
-        PathBuf::from(&self.name)
+        PathBuf::from(&self.full_name())
             .components()
             .into_iter()
             .map(|component| {
                 let s = component.as_os_str().to_str().unwrap();
 
                 match component {
-                    path::Component::Normal(c) => helpers::string::kebab_case(s),
+                    path::Component::Normal(c) => helpers::string::kebab_case(c.to_str().unwrap()),
                     _ => s.to_string(),
                 }
             })
             .collect()
     }
 
-    /// Returns the associated path with the given shelf.
-    pub fn path_in_shelf(
-        &self,
-        shelf: &Shelf,
-    ) -> PathBuf {
-        let mut path = shelf.path();
-        path.push(self.path());
-
-        path
-    }
-
-    /// Exports the instance in the filesystem.
-    pub fn export(
-        &self,
-        shelf: &Shelf,
-    ) -> Result<()> {
-        if !shelf.is_valid() {
-            return Err(Error::UnexportedShelfError(shelf.path()));
-        }
-
-        let path = self.path_in_shelf(&shelf);
-        let dir_builder = DirBuilder::new();
-
-        if !self.is_path_exists(&shelf) {
-            helpers::fs::create_folder(&dir_builder, &path)?;
-        }
-
-        Ok(())
-    }
-
     /// Returns the last subject component as a subject instance.
     pub fn stem(&self) -> Self {
-        let mut subject = self.clone();
-        subject.name = self.name();
-
-        subject
+        Self::new(self.name())
     }
 
     /// Returns the modification datetime of the folder as a `chrono::DateTime` instance.
@@ -178,7 +234,7 @@ impl Subject {
         &self,
         shelf: &Shelf,
     ) -> Result<chrono::DateTime<chrono::Utc>> {
-        match self.is_valid(&shelf) {
+        match self.is_path_exists(&shelf) {
             true => {
                 let metadata = fs::metadata(self.path_in_shelf(&shelf)).map_err(Error::IoError)?;
                 let modification_systemtime = metadata.modified().map_err(Error::IoError)?;
@@ -210,7 +266,7 @@ impl Subject {
         path
     }
 
-    /// Checks if the metadata file exists in the shelf.  
+    /// Checks if the metadata file exists in the shelf.
     pub fn has_metadata_file(
         &self,
         shelf: &Shelf,
@@ -219,61 +275,14 @@ impl Subject {
     }
 
     /// Extract the metadata file as a subject instance.
-    pub fn get_metadata(
+    pub fn get_config(
         &self,
         shelf: &Shelf,
-    ) -> Result<toml::Value> {
+    ) -> Result<config::SubjectConfig> {
         let metadata_path = self.metadata_path_in_shelf(&shelf);
         let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
 
         toml::from_str(&metadata).map_err(Error::TomlValueError)
-    }
-
-    /// Deletes the associated folder in the shelf filesystem.
-    pub fn delete(
-        &self,
-        notes: &Shelf,
-    ) -> Result<()> {
-        let path = self.path_in_shelf(&notes);
-        fs::remove_dir_all(path).map_err(Error::IoError)
-    }
-
-    /// Checks if the associated path exists from the shelf.
-    pub fn is_path_exists(
-        &self,
-        notes: &Shelf,
-    ) -> bool {
-        self.path_in_shelf(&notes).is_dir()
-    }
-
-    /// Checks if the subject has a valid folder structure from the shelf.
-    pub fn is_valid(
-        &self,
-        shelf: &Shelf,
-    ) -> bool {
-        self.is_path_exists(&shelf)
-    }
-
-    /// Returns the `_file` metadata.
-    /// If the key does not exist or invalid, it will return the default value.
-    pub fn note_filter(
-        &self,
-        shelf: &Shelf,
-    ) -> Vec<String> {
-        self.get_metadata(&shelf)
-            // If there is no metadata file, give the default files key.
-            .unwrap_or(toml::Value::from_str("_files = ['*.tex']").unwrap())
-            .get("_files")
-            // If the metadata file is present but has no valid `_files` key.
-            .unwrap_or(&toml::Value::try_from(["*.tex"]).unwrap())
-            // At this point, it is guaranteed to be an array so it is safe to unwrap this.
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| value.as_str())
-            .filter(|value| value.is_some())
-            .map(|value| value.unwrap().to_string())
-            .collect()
     }
 
     /// Returns a vector of the parts of the subject.
@@ -282,16 +291,16 @@ impl Subject {
     /// # Example
     ///
     /// ```
-    /// use texture_notes_v2::items::{Subject};
+    /// use texture_notes_v2::subjects::Subject;
     ///
-    /// let subject = Subject::from("Bachelor I/Semester I/Calculus");
+    /// let subject = Subject::new("Bachelor I/Semester I/Calculus");
     ///
     /// let subjects = subject.split_subjects();
     /// let mut split_subjects = subjects.iter();
     ///
-    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::from("Bachelor I").name());
-    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::from("Bachelor I/Semester I").name());
-    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::from("Bachelor I/Semester I/Calculus").name());
+    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I").name());
+    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I/Semester I").name());
+    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I/Semester I/Calculus").name());
     /// assert!(split_subjects.next().is_none());
     /// ```
     pub fn split_subjects(&self) -> Vec<Self> {
@@ -304,9 +313,9 @@ impl Subject {
                     let mut item_path = PathBuf::from(&item.name);
                     item_path.push(component.as_os_str());
 
-                    Subject::from(item_path.to_str().unwrap())
+                    Subject::new(item_path.to_str().unwrap())
                 }
-                None => Subject::from(component.as_os_str().to_str().unwrap()),
+                None => Subject::new(component.as_os_str().to_str().unwrap()),
             };
 
             subjects.push(s);
@@ -315,93 +324,35 @@ impl Subject {
         subjects
     }
 
-    pub fn create_master_note(&self) -> MasterNote {
-        MasterNote {
-            subject: self.clone(),
-            notes: Vec::new(),
-        }
-    }
-}
-
-pub struct MasterNote {
-    subject: Subject,
-    notes: Vec<Note>,
-}
-
-impl MasterNote {
-    pub fn new() -> Self {
-        Self {
-            subject: Subject::new(),
-            notes: Vec::new(),
-        }
-    }
-
-    pub fn subject(&self) -> &Subject {
-        &self.subject
-    }
-
-    pub fn notes(&self) -> &Vec<Note> {
-        &self.notes
-    }
-
-    pub fn push(
-        &mut self,
-        note: &Note,
-    ) -> &mut Self {
-        self.notes.push(note.clone());
-        self
-    }
-
-    pub fn set_subject(
-        &mut self,
-        subject: &Subject,
-    ) -> &mut Self {
-        self.subject = subject.clone();
-        self
-    }
-
-    pub fn path(&self) -> PathBuf {
-        let mut path = self.subject.path();
-        path.push(MASTER_NOTE_FILE);
-
-        path
-    }
-
-    pub fn path_in_shelf(
+    /// Get the notes in the shelf filesystem.
+    pub fn get_notes_in_fs(
         &self,
+        file_globs: &Vec<String>,
         shelf: &Shelf,
-    ) -> PathBuf {
-        let mut path = self.subject.path_in_shelf(&shelf);
-        path.push(MASTER_NOTE_FILE);
+    ) -> Result<Vec<Note>> {
+        let mut notes: Vec<Note> = vec![];
 
-        path
-    }
+        let subject_path = self.path_in_shelf(&shelf);
 
-    pub fn file_name(&self) -> String {
-        MASTER_NOTE_FILE.to_string()
-    }
+        let tex_files = globwalk::GlobWalkerBuilder::from_patterns(subject_path, &file_globs)
+            .build()
+            .map_err(Error::GlobParsingError)?;
 
-    pub fn export<S>(
-        &self,
-        shelf: &Shelf,
-        template: S,
-    ) -> Result<()>
-    where
-        S: AsRef<str>,
-    {
-        let template = template.as_ref();
-        let master_note_path = self.path_in_shelf(&shelf);
-        let mut master_note_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&master_note_path)
-            .map_err(Error::IoError)?;
+        for file in tex_files {
+            if let Ok(file) = file {
+                let note_path = file.path();
 
-        master_note_file
-            .write(template.as_bytes())
-            .map_err(Error::IoError)?;
-        Ok(())
+                let file_stem = note_path.file_stem().unwrap().to_string_lossy();
+
+                // All of the notes may not have a kebab-case as their file name so we have to check it if it's a valid note.
+                match Note::from(file_stem, &self, &shelf) {
+                    Some(v) => notes.push(v),
+                    None => continue,
+                }
+            }
+        }
+
+        Ok(notes)
     }
 }
 
@@ -411,7 +362,7 @@ mod tests {
 
     #[test]
     fn basic_subject() {
-        let subject = Subject::from("Calculus");
+        let subject = Subject::new("Calculus");
 
         assert_eq!(subject.path(), PathBuf::from("calculus"));
         assert_eq!(subject.name(), String::from("Calculus"));
@@ -420,13 +371,13 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Calculus").name
+            Subject::new("Calculus").name
         );
     }
 
     #[test]
     fn subject_with_multiple_path() {
-        let subject = Subject::from("Mathematics/Calculus/");
+        let subject = Subject::new("Mathematics/Calculus/");
 
         assert_eq!(subject.path(), PathBuf::from("mathematics/calculus/"));
         assert_eq!(subject.name(), String::from("Calculus"));
@@ -435,17 +386,17 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Mathematics").name
+            Subject::new("Mathematics").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Mathematics/Calculus").name
+            Subject::new("Mathematics/Calculus").name
         );
     }
 
     #[test]
     fn subject_with_multiple_path_and_space() {
-        let subject = Subject::from("Calculus/Calculus I");
+        let subject = Subject::new("Calculus/Calculus I");
 
         assert_eq!(subject.path(), PathBuf::from("calculus/calculus-i"));
         assert_eq!(subject.name(), String::from("Calculus I"));
@@ -454,17 +405,17 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Calculus").name
+            Subject::new("Calculus").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Calculus/Calculus I").name
+            Subject::new("Calculus/Calculus I").name
         );
     }
 
     #[test]
     fn subject_with_multiple_path_and_improper_input() {
-        let subject = Subject::from("Bachelor I/Semester I/Quantum Mechanics/../.");
+        let subject = Subject::new("Bachelor I/Semester I/Quantum Mechanics/../.");
 
         assert_eq!(subject.path(), PathBuf::from("bachelor-i/semester-i/"));
         assert_eq!(subject.name(), String::from("Semester I"));
@@ -473,17 +424,17 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Bachelor I").name
+            Subject::new("Bachelor I").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Bachelor I/Semester I").name
+            Subject::new("Bachelor I/Semester I").name
         );
     }
 
     #[test]
     fn subject_with_multiple_path_and_improper_input_and_leading_stars() {
-        let subject = Subject::from("Bachelor I/Semester I/Quantum Mechanics/../.Logs");
+        let subject = Subject::new("Bachelor I/Semester I/Quantum Mechanics/../.Logs");
 
         assert_eq!(subject.path(), PathBuf::from("bachelor-i/semester-i/logs"));
         assert_eq!(subject.name(), String::from(".Logs"));
@@ -492,21 +443,54 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Bachelor I/").name
+            Subject::new("Bachelor I/").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Bachelor I/Semester I").name
+            Subject::new("Bachelor I/Semester I").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::from("Bachelor I/Semester I/.Logs").name
+            Subject::new("Bachelor I/Semester I/.Logs").name
         );
     }
 
     #[test]
+    fn subject_with_parent_dir() {
+        let subject = Subject::new("../University/Year 1/Semester 1/Computer Engineering");
+
+        assert_eq!(subject.name(), String::from("Computer Engineering"));
+        assert_eq!(
+            subject.path(),
+            PathBuf::from("../university/year-1/semester-1/computer-engineering")
+        );
+
+        let subjects = subject.split_subjects();
+        let mut subject_part = subjects.iter();
+
+        assert_eq!(subject_part.next().unwrap().name, Subject::new("..").name);
+        assert_eq!(
+            subject_part.next().unwrap().name,
+            Subject::new("../University").name
+        );
+        assert_eq!(
+            subject_part.next().unwrap().name,
+            Subject::new("../University/Year 1").name
+        );
+        assert_eq!(
+            subject_part.next().unwrap().name,
+            Subject::new("../University/Year 1/Semester 1").name
+        );
+        assert_eq!(
+            subject_part.next().unwrap().name,
+            Subject::new("../University/Year 1/Semester 1/Computer Engineering").name
+        );
+        assert!(subject_part.next().is_none());
+    }
+
+    #[test]
     fn basic_note() {
-        let subject = Subject::from("Calculus");
+        let subject = Subject::new("Calculus");
         let note = Note::new("An introduction to calculus concepts");
 
         assert_eq!(
@@ -522,7 +506,7 @@ mod tests {
 
     #[test]
     fn note_and_subject_with_multiple_path() {
-        let subject = Subject::from("First Year/Semester I/Calculus");
+        let subject = Subject::new("First Year/Semester I/Calculus");
         let note = Note::new("An introduction to calculus concepts");
 
         assert_eq!(

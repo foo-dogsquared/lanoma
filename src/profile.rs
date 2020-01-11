@@ -1,19 +1,24 @@
 use std::collections::HashMap;
-use std::fs::{self, DirBuilder};
+use std::convert::TryFrom;
+use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
 use toml::{self, Value};
 
+use crate::config::ProfileConfig;
 use crate::consts;
 use crate::error::Error;
 use crate::helpers;
-use crate::items::Note;
-use crate::shelf::{Shelf, ShelfItem};
-use crate::subjects::{MasterNote, Subject};
+use crate::masternote::MasterNote;
+use crate::note::Note;
+use crate::shelf::{Shelf, ShelfData};
+use crate::subjects::Subject;
 use crate::templates::{self, TemplateGetter, TemplateRegistry};
-use crate::Result;
+use crate::{Object, Result};
+
+#[macro_use]
+use crate::{modify_toml_table, upsert_toml_table};
 
 // profile constants
 pub const PROFILE_METADATA_FILENAME: &str = ".profile.toml";
@@ -21,132 +26,7 @@ pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = ".templates";
 
 pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
-// TODO: Implement the master note templating system.
 pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master/_default";
-
-/// A basic macro for modifying a TOML table.
-macro_rules! modify_toml_table {
-    ($var:ident, $( ($field:expr, $value:expr) ),*) => {
-        let mut temp_table = $var.as_table_mut().unwrap();
-
-        $(
-            temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
-        )*
-    };
-}
-
-/// A basic macro for upserting a TOML table.
-macro_rules! upsert_toml_table {
-    ($var:ident, $( ($field:expr, $value:expr) ),*) => {
-        let mut temp_table = $var.as_table_mut().unwrap();
-
-        $(
-            if temp_table.get($field).is_none() {
-                temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
-            }
-        )*
-    };
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProfileMetadata {
-    name: String,
-    version: String,
-
-    #[serde(flatten)]
-    extra: HashMap<String, Value>,
-}
-
-impl ProfileMetadata {
-    /// Create a new profile metadata instance.
-    pub fn new() -> Self {
-        Self {
-            name: String::from("New Student"),
-            version: String::from(consts::APP_VERSION),
-            extra: HashMap::<String, Value>::new(),
-        }
-    }
-
-    /// Create a profile metadata instance from a file.
-    pub fn from_fs<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let metadata_file_string = fs::read_to_string(path).map_err(Error::IoError)?;
-        let metadata_result: Self =
-            toml::from_str(&metadata_file_string).map_err(Error::TomlValueError)?;
-
-        Ok(metadata_result)
-    }
-
-    pub fn name(&self) -> &String {
-        &self.name
-    }
-
-    pub fn version(&self) -> &String {
-        &self.version
-    }
-
-    pub fn extra(&self) -> &HashMap<String, Value> {
-        &self.extra
-    }
-
-    /// Sets the name of the profile metadata.
-    pub fn set_name(
-        &mut self,
-        name: String,
-    ) -> &mut Self {
-        self.name = name;
-        self
-    }
-
-    /// Sets the version of the metadata.
-    pub fn set_version(
-        &mut self,
-        version: String,
-    ) -> &mut Self {
-        self.version = version;
-        self
-    }
-
-    /// Sets the extra metadata.
-    pub fn set_extra(
-        &mut self,
-        extra: HashMap<String, Value>,
-    ) -> &mut Self {
-        self.extra = extra;
-        self
-    }
-
-    /// Merge the extra metadata hashmap into the profile metadata instance.
-    pub fn merge_extra(
-        &mut self,
-        new_extra: HashMap<String, Value>,
-    ) -> &mut Self {
-        for (key, value) in new_extra.into_iter() {
-            self.extra.insert(key, value);
-        }
-
-        self
-    }
-
-    /// Export the metadata in the filesystem.
-    pub fn export<P: AsRef<Path>>(
-        &self,
-        path: P,
-    ) -> Result<()> {
-        let path = path.as_ref();
-
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(path)
-            .map_err(Error::IoError)?;
-        let metadata_as_string =
-            toml::to_string_pretty(&self).map_err(Error::TomlSerializeError)?;
-        file.write_all(metadata_as_string.as_bytes())
-            .map_err(Error::IoError)?;
-
-        Ok(())
-    }
-}
 
 /// A builder for constructing the profile.
 /// Setting the values does not consume the builder for dynamic setting.
@@ -213,21 +93,20 @@ impl ProfileBuilder {
             profile.path = path.clone();
         }
 
-        let mut metadata_instance = ProfileMetadata::new();
+        let mut metadata_instance = ProfileConfig::new();
 
         if self.name.is_some() {
             let name = self.name.unwrap();
-
-            metadata_instance.set_name(name);
+            metadata_instance.name = name.into();
         }
 
         if self.extra_metadata.is_some() {
             let extra = self.extra_metadata.unwrap();
 
-            metadata_instance.set_extra(extra);
+            metadata_instance.extra = extra;
         }
 
-        profile.metadata = metadata_instance;
+        profile.config = metadata_instance;
 
         profile
     }
@@ -236,8 +115,14 @@ impl ProfileBuilder {
 /// A profile holds certain metadata such as the templates.
 pub struct Profile {
     path: PathBuf,
-    metadata: ProfileMetadata,
+    config: ProfileConfig,
     templates: templates::TemplateHandlebarsRegistry,
+}
+
+impl Object for Profile {
+    fn data(&self) -> toml::Value {
+        toml::Value::try_from(self.config()).unwrap()
+    }
 }
 
 impl Profile {
@@ -245,7 +130,7 @@ impl Profile {
     pub fn new() -> Self {
         Self {
             path: PathBuf::new(),
-            metadata: ProfileMetadata::new(),
+            config: ProfileConfig::new(),
             templates: templates::TemplateHandlebarsRegistry::new(),
         }
     }
@@ -260,17 +145,21 @@ impl Profile {
 
         profile.path = fs::canonicalize(path).map_err(Error::IoError)?;
         profile.set_templates()?;
-        profile.metadata = ProfileMetadata::from_fs(profile.metadata_path())?;
+        profile.config = ProfileConfig::try_from(profile.metadata_path())?;
 
         Ok(profile)
     }
 
-    pub fn metadata(&self) -> &ProfileMetadata {
-        &self.metadata
+    pub fn config(&self) -> &ProfileConfig {
+        &self.config
     }
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()
+    }
+
+    pub fn template_registry(&self) -> &templates::TemplateHandlebarsRegistry {
+        &self.templates
     }
 
     /// Insert the contents of the files inside of the templates directory of the profile in the Handlebars registry.
@@ -295,132 +184,6 @@ impl Profile {
         self.templates = registry;
 
         Ok(())
-    }
-
-    fn create_toml_from_subject(
-        &self,
-        shelf: &Shelf,
-        subject: &Subject,
-    ) -> toml::Value {
-        let mut subject_as_toml = match subject.get_metadata(&shelf) {
-            Ok(v) => v,
-            Err(_e) => toml::Value::from(HashMap::<String, toml::Value>::new()),
-        };
-        let subject_path = subject.path_in_shelf(&shelf);
-        upsert_toml_table! {subject_as_toml,
-            ("name", subject.name())
-        };
-        modify_toml_table! {subject_as_toml,
-            ("_slug", helpers::string::kebab_case(&subject.name())),
-            ("_path", subject_path.clone()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), subject_path.clone()).unwrap().to_str().unwrap()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(subject_path, &shelf.path()).unwrap().to_str().unwrap())
-        };
-
-        subject_as_toml
-    }
-
-    fn create_toml_from_note(
-        &self,
-        shelf: &Shelf,
-        subject: &Subject,
-        note: &Note,
-    ) -> toml::Value {
-        let mut note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
-        let note_path = note.path_in_shelf(&subject, &shelf);
-        modify_toml_table! {note_as_toml,
-            ("title", note.title()),
-            ("_slug", helpers::string::kebab_case(note.title())),
-            ("_file", note.file_name()),
-            ("_path", note_path.clone()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), note_path.clone()).unwrap().to_str().unwrap()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(note_path, &shelf.path()).unwrap().to_str().unwrap())
-        };
-
-        note_as_toml
-    }
-
-    fn create_toml_from_master_note(
-        &self,
-        shelf: &Shelf,
-        master_note: &MasterNote,
-    ) -> toml::Value {
-        let mut master_note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
-        let mut notes_toml: Vec<toml::Value> = vec![];
-
-        for note in master_note.notes().iter() {
-            notes_toml.push(self.create_toml_from_note(&shelf, master_note.subject(), &note));
-        }
-
-        let master_note_path = master_note.path_in_shelf(&shelf);
-        modify_toml_table! {master_note_as_toml,
-            ("notes", notes_toml),
-            ("subject", self.create_toml_from_subject(&shelf, master_note.subject())),
-            ("_path", master_note.path().to_string_lossy()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(master_note_path.clone(), &shelf.path()).unwrap()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), master_note_path).unwrap())
-        };
-
-        master_note_as_toml
-    }
-
-    /// Returns a string from a Handlebars template.
-    ///
-    /// While creating the metadata from the profile, it will override certain fields
-    /// like `title` (the title of the note) and `subject` (the name of the subject).
-    pub fn return_string_from_note_template<S>(
-        &self,
-        shelf: &Shelf,
-        subject: &Subject,
-        note: &Note,
-        template_name: &Option<S>,
-    ) -> Result<String>
-    where
-        S: AsRef<str>,
-    {
-        let subject_toml = self.create_toml_from_subject(&shelf, &subject);
-        let note_toml = self.create_toml_from_note(&shelf, &subject, &note);
-
-        // The metadata is guaranteed to be valid since the codebase enforces it to be valid either at creation
-        // or at retrieval from a folder.
-        // It is safe to call `unwrap` from here.
-        let mut metadata: toml::Value = toml::Value::try_from(self.metadata.clone()).unwrap();
-        modify_toml_table! {metadata,
-            ("subject", subject_toml),
-            ("note", note_toml),
-            ("_date", toml::Value::String(chrono::Local::now().format("%F").to_string()))
-        };
-        let template_name = match template_name.as_ref() {
-            Some(v) => v.as_ref(),
-            None => PROFILE_NOTE_TEMPLATE_NAME,
-        };
-
-        self.templates.render(template_name, &metadata)
-    }
-
-    pub fn return_string_from_master_note_template<S>(
-        &self,
-        shelf: &Shelf,
-        master_note: &MasterNote,
-        template: &Option<S>,
-    ) -> Result<String>
-    where
-        S: AsRef<str>,
-    {
-        let subject_as_toml = self.create_toml_from_subject(&shelf, &master_note.subject());
-        let master_note_as_toml = self.create_toml_from_master_note(&shelf, &master_note);
-        let mut metadata = toml::Value::try_from(self.metadata.clone()).unwrap();
-        modify_toml_table! {metadata,
-            ("subject", subject_as_toml),
-            ("_master", master_note_as_toml),
-            ("_date", chrono::Local::now().format("%F").to_string())
-        }
-        let template_name = match template.as_ref() {
-            Some(v) => v.as_ref(),
-            None => PROFILE_MASTER_NOTE_TEMPLATE_NAME,
-        };
-
-        self.templates.render(template_name, metadata)
     }
 
     /// Returns the metadata file path of the profile.
@@ -460,14 +223,14 @@ impl Profile {
     }
 
     /// Get the metadata from the profile.
-    pub fn get_metadata(&self) -> Result<ProfileMetadata> {
+    pub fn get_metadata(&self) -> Result<ProfileConfig> {
         if !self.is_valid() {
             return Err(Error::InvalidProfileError(self.path.clone()));
         }
 
         let metadata_file_string =
             fs::read_to_string(self.metadata_path()).map_err(Error::IoError)?;
-        let metadata: ProfileMetadata =
+        let metadata: ProfileConfig =
             toml::from_str(&metadata_file_string).map_err(Error::TomlValueError)?;
 
         Ok(metadata)
@@ -486,7 +249,16 @@ impl Profile {
         }
 
         if !self.has_metadata() {
-            self.metadata.export(self.metadata_path())?;
+            let mut metadata_file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(self.metadata_path())
+                .map_err(Error::IoError)?;
+
+            metadata_file
+                .write_all(toml::to_string_pretty(self.config()).unwrap().as_bytes())
+                .map_err(Error::IoError)?;
         }
 
         if !self.has_templates() {
@@ -502,7 +274,7 @@ impl Profile {
     /// If there's no valid value found from the key (i.e., invalid type), it will return the default command.
     pub fn compile_note_command(&self) -> String {
         let PROFILE_DEFAULT_COMMAND = String::from("latexmk -pdf {{note}}");
-        match self.metadata.extra.get("command").as_ref() {
+        match self.config.extra.get("command").as_ref() {
             Some(value) => match value.is_str() {
                 true => value.as_str().unwrap().to_string(),
                 false => PROFILE_DEFAULT_COMMAND,
@@ -515,7 +287,8 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shelf::{ExportOptions, Shelf, ShelfBuilder};
+    use crate::helpers;
+    use crate::shelf::{ExportOptions, Shelf, ShelfItem};
     use crate::CompilationEnvironment;
     use tempfile;
     use toml;
@@ -530,10 +303,9 @@ mod tests {
 
     fn tmp_shelf() -> Result<(tempfile::TempDir, Shelf)> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
-        let mut shelf_builder = ShelfBuilder::new();
-        shelf_builder.path(tmp_dir.path());
+        let shelf = Shelf::from(tmp_dir.path())?;
 
-        Ok((tmp_dir, shelf_builder.build()?))
+        Ok((tmp_dir, shelf))
     }
 
     #[test]
@@ -541,13 +313,12 @@ mod tests {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
         let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
 
-        let export_options = ExportOptions::new();
-
         assert!(profile.export().is_ok());
         assert!(shelf.export().is_ok());
 
         let test_subjects =
             Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Physics"], &shelf);
+        let subject = test_subjects[0].clone();
         let test_notes = Note::from_vec_loose(
             &vec![
                 "Introduction to Precalculus",
@@ -556,30 +327,22 @@ mod tests {
                 "Introduction to Limits",
                 "Matrices and Markov Chains",
             ],
-            &test_subjects[0],
+            &subject,
             &shelf,
-        )?;
-        let test_input = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
+        );
 
-        % document metadata
-        \author{ {{~author~}} }
-        \title{ {{~title~}} }
-        \date{ {{~date~}} }
-        
-        \begin{document}
-        This is a content sample.
-        \end{document}
-        ";
+        let exported_subjects: Vec<Subject> = test_subjects
+            .into_iter()
+            .filter(|subject| subject.export(&shelf).is_ok())
+            .collect();
+        assert_eq!(exported_subjects.len(), 3);
 
-        shelf.create_subjects(&test_subjects);
-        shelf.create_notes(&test_subjects[0], &test_notes, test_input, &export_options);
-
-        let mut compilation_env = CompilationEnvironment::new();
-        compilation_env
-            .command(profile.compile_note_command())
-            .notes(test_notes.clone())
-            .subject(test_subjects[0].clone())
-            .thread_count(4);
+        let exported_notes: Vec<Note> = test_notes
+            .clone()
+            .into_iter()
+            .filter(|note| note.export((&subject.clone(), &shelf)).is_ok())
+            .collect();
+        assert_eq!(exported_notes.len(), 5);
 
         assert!(Profile::from(profile_tmp_dir).is_ok());
 
@@ -592,13 +355,13 @@ mod tests {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
         let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
 
-        let export_options = ExportOptions::new();
-
         assert!(profile.export().is_ok());
         assert!(shelf.export().is_ok());
 
         let test_subjects =
             Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Physics"], &shelf);
+
+        let subject = test_subjects[0].clone();
         let test_notes = Note::from_vec_loose(
             &vec![
                 "Introduction to Precalculus",
@@ -607,29 +370,45 @@ mod tests {
                 "Introduction to Limits",
                 "Matrices and Markov Chains",
             ],
-            &test_subjects[0],
+            &subject,
             &shelf,
-        )?;
+        );
         let test_input = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
 
         % document metadata
         \author{ {{~author~}} }
         \title{ {{~title~}} }
         \date{ {{~date~}} }
-        
+
         \begin{document}
         This is a content sample.
         \end{document}
         ";
 
-        shelf.create_subjects(&test_subjects);
-        shelf.create_notes(&test_subjects[0], &test_notes, test_input, &export_options);
+        let exported_subjects: Vec<Subject> = test_subjects
+            .into_iter()
+            .filter(|subject| subject.export(&shelf).is_ok())
+            .collect();
+        assert_eq!(exported_subjects.len(), 3);
 
-        let mut compilation_env = CompilationEnvironment::new();
+        let exported_notes: Vec<Note> = test_notes
+            .clone()
+            .into_iter()
+            .filter(|note| note.export((&subject.clone(), &shelf)).is_ok())
+            .map(|note| {
+                let path = note.path_in_shelf((&subject.clone(), &shelf));
+
+                helpers::fs::write_file(path, test_input.clone(), false).unwrap();
+
+                note
+            })
+            .collect();
+        assert_eq!(exported_notes.len(), 5);
+
+        let mut compilation_env = CompilationEnvironment::new(subject);
         compilation_env
             .command(profile.compile_note_command())
-            .notes(test_notes.clone())
-            .subject(test_subjects[0].clone())
+            .notes(test_notes)
             .thread_count(4);
         assert_eq!(compilation_env.compile(&shelf)?.len(), 5);
 

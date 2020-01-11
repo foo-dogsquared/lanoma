@@ -5,31 +5,67 @@ use std::str::FromStr;
 use std::sync;
 use std::thread;
 
+use handlebars;
 use toml::{self};
 
 #[macro_use]
 extern crate lazy_static;
 
+pub mod config;
 mod consts;
 pub mod error;
 mod helpers;
-pub mod items;
+pub mod masternote;
+pub mod note;
 pub mod profile;
 pub mod shelf;
 pub mod subjects;
 pub mod templates;
 pub mod threadpool;
 
-use crate::items::Note;
+use crate::masternote::MasterNote;
+use crate::note::Note;
 use crate::shelf::{Shelf, ShelfItem};
-use crate::subjects::{MasterNote, Subject};
+use crate::subjects::Subject;
 use error::Error;
 
 pub type Result<T> = result::Result<T, Error>;
+
 // Making it static since it does not handle any templates anyway and only here for rendering the string.
 lazy_static! {
     static ref HANDLEBARS_REG: handlebars::Handlebars = handlebars::Handlebars::new();
 }
+
+pub trait Object {
+    fn data(&self) -> toml::Value;
+}
+
+/// A basic macro for modifying a TOML table.
+#[macro_export]
+macro_rules! modify_toml_table {
+    ($var:ident, $( ($field:expr, $value:expr) ),*) => {
+        let mut temp_table = $var.as_table_mut().unwrap();
+
+        $(
+            temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
+        )*
+    };
+}
+
+/// A basic macro for upserting a TOML table.
+#[macro_export]
+macro_rules! upsert_toml_table {
+    ($var:ident, $( ($field:expr, $value:expr) ),*) => {
+        let mut temp_table = $var.as_table_mut().unwrap();
+
+        $(
+            if temp_table.get($field).is_none() {
+                temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
+            }
+        )*
+    };
+}
+
 /// A struct for handling the parameters for the compilation environment.
 ///
 /// This data structure is made for abstracting the compilation process making it as a separate component.
@@ -43,9 +79,12 @@ pub struct CompilationEnvironment {
 
 impl CompilationEnvironment {
     /// Create a new compilation environment instance.
-    pub fn new() -> Self {
+    pub fn new<S>(subject: S) -> Self
+    where
+        S: AsRef<str>,
+    {
         Self {
-            subject: Subject::new(),
+            subject: Subject::new(subject),
             notes: vec![],
             command: String::new(),
             thread_count: 1,
@@ -93,11 +132,16 @@ impl CompilationEnvironment {
     /// Executes the compilation process.
     /// This also consume the struct.
     pub fn compile(
-        mut self,
+        self,
         shelf: &Shelf,
     ) -> Result<Vec<Note>> {
         let original_dir = env::current_dir().map_err(Error::IoError)?;
         let compilation_dst = self.subject.path_in_shelf(&shelf);
+        println!(
+            "{:?} {:?}",
+            env::current_dir().map_err(Error::IoError)?,
+            &compilation_dst
+        );
         env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
 
         // this will serve as a task queue for the threads to be spawned

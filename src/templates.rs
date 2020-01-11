@@ -1,4 +1,5 @@
 use std::fs;
+use std::ops::Deref;
 use std::path::Path;
 
 use globwalk;
@@ -95,6 +96,14 @@ impl TemplateRegistry for TemplateHandlebarsRegistry {
         self.0
             .render(template_name.as_ref(), &value)
             .map_err(Error::HandlebarsRenderError)
+    }
+}
+
+impl Deref for TemplateHandlebarsRegistry {
+    type Target = handlebars::Handlebars;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -241,7 +250,7 @@ mod tests {
                 .map_err(Error::IoError)?;
         }
 
-        let template_files = TemplateGetter::get_templates(tmp_dir.path(), "*.tex")?;
+        let template_files = TemplateGetter::get_templates(tmp_dir.path(), "tex")?;
 
         assert_eq!(template_files.len(), 3);
 

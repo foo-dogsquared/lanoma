@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
 use std::process;
 
 use directories;
@@ -9,12 +12,19 @@ use std::path::PathBuf;
 
 extern crate texture_notes_v2;
 use texture_notes_v2::error::Error;
-use texture_notes_v2::items::Note;
-use texture_notes_v2::profile::{Profile, ProfileBuilder};
-use texture_notes_v2::shelf::{ExportOptions, Shelf};
-use texture_notes_v2::subjects::{MasterNote, Subject};
+use texture_notes_v2::masternote::MasterNote;
+use texture_notes_v2::note::Note;
+use texture_notes_v2::profile::{
+    Profile, ProfileBuilder, PROFILE_MASTER_NOTE_TEMPLATE_NAME, PROFILE_NOTE_TEMPLATE_NAME,
+};
+use texture_notes_v2::shelf::{ExportOptions, Shelf, ShelfData, ShelfItem};
+use texture_notes_v2::subjects::Subject;
 use texture_notes_v2::threadpool::ThreadPool;
 use texture_notes_v2::CompilationEnvironment;
+use texture_notes_v2::Object;
+
+#[macro_use]
+use texture_notes_v2::{modify_toml_table, upsert_toml_table};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Texture Notes", about = "Manage your LaTeX study notes.")]
@@ -163,7 +173,7 @@ pub enum Command {
 fn main() {
     let args = TextureNotes::from_args();
 
-    match cli(args) {
+    match parse_from_args(args) {
         Ok(()) => (),
         Err(e) => {
             match e {
@@ -185,7 +195,7 @@ fn main() {
     };
 }
 
-fn cli(args: TextureNotes) -> Result<(), Error> {
+fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
     let user_dirs = directories::BaseDirs::new().unwrap();
     let mut config_app_dir = user_dirs.config_dir().to_path_buf();
     config_app_dir.push(env!("CARGO_PKG_NAME"));
@@ -229,16 +239,31 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
             match kind {
                 Input::Notes { subject, notes } => {
                     let subject = Subject::from_shelf(&subject, &shelf)?;
-                    let notes = Note::from_vec_loose(&notes, &subject, &shelf)?;
+                    let notes: Vec<Note> = notes.iter().map(|note| Note::new(note)).collect();
 
                     let mut created_notes: Vec<Note> = vec![];
                     for note in notes {
+                        let object = note_full_object(&profile, &shelf, &note, &subject);
                         let template_string = profile
-                            .return_string_from_note_template(&shelf, &subject, &note, &template)?;
+                            .template_registry()
+                            .render(
+                                &template
+                                    .as_ref()
+                                    .unwrap_or(&String::from(PROFILE_NOTE_TEMPLATE_NAME)),
+                                &object,
+                            )
+                            .map_err(Error::HandlebarsRenderError)?;
+                        println!(
+                            "Object:\n{:?}\n\nTemplate:\n{:?}",
+                            &object, &template_string
+                        );
 
-                        if shelf
-                            .create_note(&subject, &note, &template_string, &export_options)
-                            .is_ok()
+                        if write_file(
+                            note.path_in_shelf((&subject, &shelf)),
+                            template_string,
+                            not_strict,
+                        )
+                        .is_ok()
                         {
                             created_notes.push(note)
                         }
@@ -250,8 +275,10 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                     }
                 }
                 Input::Subjects { subjects } => {
-                    let subjects = Subject::from_vec_loose(&subjects, &shelf);
-                    let created_subjects = shelf.create_subjects(&subjects);
+                    let created_subjects: Vec<Subject> = Subject::from_vec_loose(&subjects, &shelf)
+                        .into_iter()
+                        .filter(|subject| subject.export(&shelf).is_ok())
+                        .collect();
 
                     if created_subjects.len() <= 0 {
                         println!("No subjects has been created.");
@@ -268,16 +295,19 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
         }
         Command::Remove { kind } => match kind {
             Input::Subjects { subjects } => {
-                let subjects = Subject::from_vec_loose(&subjects, &shelf);
-                let deleted_subjects = shelf.delete_subjects(&subjects);
+                let deleted_subjects: Vec<Subject> = Subject::from_vec_loose(&subjects, &shelf)
+                    .into_iter()
+                    .filter(|subject| subject.delete(&shelf).is_ok())
+                    .collect();
 
                 println!("{:?}", deleted_subjects);
             }
             Input::Notes { subject, notes } => {
                 let subject = Subject::from_shelf(&subject, &shelf)?;
-                let notes = Note::from_vec_loose(&notes, &subject, &shelf)?;
-
-                let deleted_notes = shelf.delete_notes(&subject, &notes);
+                let deleted_notes: Vec<Note> = Note::from_vec_loose(&notes, &subject, &shelf)
+                    .into_iter()
+                    .filter(|note| note.delete((&subject, &shelf)).is_ok())
+                    .collect();
 
                 println!("The following notes has been deleted successfully:");
                 for note in deleted_notes.iter() {
@@ -297,11 +327,10 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
             let compiled_notes_envs = match kind {
                 Input::Notes { subject, notes } => {
                     let subject = Subject::from_shelf(&subject, &shelf)?;
-                    let notes = Note::from_vec_loose(&notes, &subject, &shelf)?;
+                    let notes = Note::from_vec_loose(&notes, &subject, &shelf);
 
-                    let mut compiled_notes_env = CompilationEnvironment::new();
+                    let mut compiled_notes_env = CompilationEnvironment::new(subject);
                     compiled_notes_env
-                        .subject(subject)
                         .notes(notes)
                         .command(command)
                         .thread_count(thread_count as i16);
@@ -312,14 +341,13 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
 
                     for subject in subjects.iter() {
                         let subject = Subject::from_shelf(&subject, &shelf)?;
-                        let _file_filter = subject.note_filter(&shelf);
-                        let file_filter = files.as_ref().unwrap_or(&_file_filter);
+                        let subject_config = subject.get_config(&shelf)?;
+                        let file_filter = files.as_ref().unwrap_or(&subject_config.files);
 
-                        let notes = shelf.get_notes_in_fs(&file_filter, &subject)?;
-                        let mut env = CompilationEnvironment::new();
+                        let notes = subject.get_notes_in_fs(&file_filter, &shelf)?;
+                        let mut env = CompilationEnvironment::new(subject);
                         env.command(command.clone())
                             .notes(notes)
-                            .subject(subject)
                             .thread_count(thread_count as i16);
 
                         envs.push(env);
@@ -363,22 +391,25 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                     Ok(v) => v,
                     Err(_e) => continue,
                 };
-                // The files filter either the given command line argument or the subject metadata.
-                let _files = subject.note_filter(&shelf);
-                let files = files.as_ref().unwrap_or(&_files);
+                let subject_config = subject.get_config(&shelf)?;
+                let files = files.as_ref().unwrap_or(&subject_config.files);
 
-                let notes = shelf.get_notes_in_fs(&files, &subject)?;
-                let mut master_note = MasterNote::new();
-                master_note.set_subject(&subject);
+                let notes = subject.get_notes_in_fs(&files, &shelf)?;
+                let mut master_note = MasterNote::new(subject.clone());
                 for note in notes.iter() {
                     master_note.push(&note);
                 }
-                let master_note_template = profile.return_string_from_master_note_template(
-                    &shelf,
-                    &master_note,
-                    &template,
-                )?;
-                master_note.export(&shelf, master_note_template)?;
+                let master_note_object = master_note_full_object(&profile, &shelf, &master_note);
+                let resulting_string = profile
+                    .template_registry()
+                    .render(
+                        &template
+                            .as_ref()
+                            .unwrap_or(&PROFILE_MASTER_NOTE_TEMPLATE_NAME.into()),
+                        &master_note_object,
+                    )
+                    .map_err(Error::HandlebarsRenderError)?;
+                write_file(master_note.path_in_shelf(&shelf), resulting_string, false)?;
 
                 if !skip_compilation {
                     let original_dir = env::current_dir().map_err(Error::IoError)?;
@@ -389,7 +420,6 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
                         let mut master_note_compilation_cmd =
                             texture_notes_v2::master_note_to_cmd(&master_note, command);
                         let output = master_note_compilation_cmd.output();
-                        println!("{:?}", output);
                     });
                     env::set_current_dir(original_dir).map_err(Error::IoError)?;
                 }
@@ -398,6 +428,76 @@ fn cli(args: TextureNotes) -> Result<(), Error> {
         _ => (),
     }
 
+    Ok(())
+}
+
+fn master_note_full_object(
+    profile: &Profile,
+    shelf: &Shelf,
+    master_note: &MasterNote,
+) -> toml::Value {
+    let subject_as_toml = ShelfData::data(master_note.subject(), &shelf);
+    let master_note_as_toml = ShelfData::data(master_note, &shelf);
+    let profile_config = Object::data(profile);
+
+    let mut metadata = toml::Value::from(HashMap::<String, toml::Value>::new());
+    modify_toml_table! {metadata,
+        ("profile", profile_config),
+        ("subject", subject_as_toml),
+        ("master", master_note_as_toml),
+        ("date", chrono::Local::now().format("%F").to_string())
+    }
+
+    metadata
+}
+
+fn note_full_object(
+    profile: &Profile,
+    shelf: &Shelf,
+    note: &Note,
+    subject: &Subject,
+) -> toml::Value {
+    let subject_toml = ShelfData::data(subject, &shelf);
+    let note_toml = ShelfData::data(note, (&subject, &shelf));
+    let profile_config = Object::data(profile);
+
+    // The metadata is guaranteed to be valid since the codebase enforces it to be valid either at creation
+    // or at retrieval from a folder.
+    // It is safe to call `unwrap` from here.
+    let mut metadata = toml::Value::from(HashMap::<String, toml::Value>::new());
+    modify_toml_table! {metadata,
+        ("profile", profile_config),
+        ("subject", subject_toml),
+        ("note", note_toml),
+        ("date", toml::Value::String(chrono::Local::now().format("%F").to_string()))
+    };
+
+    metadata
+}
+
+/// A generic function for writing a shelf item (as a file).
+fn write_file<P, S>(
+    path: P,
+    string: S,
+    strict: bool,
+) -> Result<(), Error>
+where
+    P: AsRef<Path>,
+    S: AsRef<str>,
+{
+    let path = path.as_ref();
+    let mut file_open_options = OpenOptions::new();
+    file_open_options.write(true);
+
+    if strict {
+        file_open_options.create_new(true);
+    } else {
+        file_open_options.create(true).truncate(true);
+    }
+
+    let mut file = file_open_options.open(path).map_err(Error::IoError)?;
+    file.write(string.as_ref().as_bytes())
+        .map_err(Error::IoError)?;
     Ok(())
 }
 
@@ -415,6 +515,6 @@ mod tests {
         ];
         let command_args = TextureNotes::from_iter(command_args_as_vec.iter());
 
-        assert_eq!(cli(command_args).is_err(), true);
+        assert_eq!(parse_from_args(command_args).is_err(), true);
     }
 }

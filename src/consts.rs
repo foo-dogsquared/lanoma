@@ -5,7 +5,7 @@ pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, cr
 
 % document metadata
 \author{ {{~name~}} }
-\title{ {{~subject.name~}} }
+\title{ {{~_subject.name~}} }
 \date{ {{~_date~}} }
 
 \begin{document}
@@ -22,12 +22,12 @@ pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=fals
 
 % document metadata
 \author{ {{~name~}} }
-\title{ {{~note.title~}} }
+\title{ {{~_note.title~}} }
 \date{ {{~_date~}} }
 
 \begin{document}
 Sample content.
 
-{{subject.name}}
+{{_subject.name}}
 \end{document}
 ";
