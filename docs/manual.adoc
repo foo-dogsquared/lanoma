@@ -3,8 +3,9 @@ Gabriel Arazas
 2019-12-31
 :toc:
 :doctype: manpage
-:manmanual: Texture Notes Manual
-:mansource: Texture Notes v2.0.0
+:program: Texture Notes
+:manmanual: {program} Manual
+:mansource: {program} v2.0.0
 :man-linkstyle: pass:[red R < >]
 
 :default-template-name: _default
@@ -148,6 +149,7 @@ For certain cases, this can be distinct when creating notes or the subject.
 
 The same applies for referring to notes. 
 As long as the resulting kebab-case is the same, it refers to the same note in the filesystem. 
+That said, with this implementation, Texture Notes does not let you create notes that are not in kebab-case. 
 
 
 === Note templates 
@@ -200,10 +202,11 @@ The following TOML table is then formed in the note creation process.
 
 [source, toml]
 ----
+date = "2019-01-06"
+
+[profile]
 name = "STUDENT_NAME"
 version = "VERSION"
-_date = "2019-01-06"
-
 # The rest of the keys in `profile.toml`. 
 # ...
 
@@ -218,7 +221,7 @@ name = "Calculus I"
 _file = "calculus"
 # ...
 _relpath_from_shelf = ""
-# The rest of the keys in `info.toml` of the subject.
+# The rest of the keys in `info.toml` of the subject if there's any. 
 ----
 
 This is where setting custom keys can be handy. 
@@ -304,31 +307,6 @@ To skip the compilation step, simply provide the skip compilation flag (`-s`/`--
 
 
 
-== Metadata keys reference 
-
-A reference of the keys Texture Notes officially recognizes. 
-
-*`{profile-metadata-file}`*:: 
-
-* `name` - The name of the profile. 
-This field is required. 
-* `version`- The version of the profile. 
-This field is required. 
-This key may or may not have expanded upon future versions. 
-* `command` - The compilation command for the notes. 
-If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
-
-*`{subject-metadata-file}`*::
-
-* `name` - The name of the subject. 
-Mainly used for creating the note template. 
-* `_files` - An array of globs pointing to a note. 
-This is mainly used as a filter for retrieving all notes of the specified subject. 
-The default value is `["*.tex"]`. 
-
-
-
-
 == Exit status 
 
 *0*::
@@ -347,6 +325,34 @@ https://github.com/foo-dogsquared/texture-notes-v2
 
 Issue tracker::
 https://github.com/foo-dogsquared/texture-notes-v2/issues
+
+
+
+
+[appendix]
+== Config reference 
+
+A reference of the keys Texture Notes officially recognizes. 
+
+*`{profile-metadata-file}`*:: 
+
+* `name` - The name of the profile. 
+This field is required. 
+* `version`- The version of the profile. 
+This field is required. 
+This key may or may not have expanded upon future versions. 
+* `command` - A Handlebars string for the compilation command of the notes. 
+If this key is absent in the file, it uses `pdflatex {{note}}`. 
+
+*`{subject-metadata-file}`*::
+
+* `name` - The name of the subject. 
+Mainly used for creating the note template. 
+* `_files` - An array of globs pointing to a note. 
+This is mainly used as a filter for retrieving all notes of the specified subject. 
+The default value is `["*.tex"]`. 
+* `command` - A Handlebars string for the compilation command of the notes. 
+If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
 
 
 
@@ -414,11 +420,11 @@ In creating a note, the following TOML is formed.
 
 [source, toml]
 ----
-name = "NAME"
-version = "VERSION"
-_date = "2020-01-07"
+date = "2020-01-07"
 
-# The rest of the keys in `profile.toml`. 
+# The profile object
+[profile]
+# ...
 
 # The subject TOML
 [subject]
@@ -436,18 +442,18 @@ The resulting TOML when creating the master note is similar to the resulting TOM
 
 [source, toml]
 ----
-name = "NAME"
-version = "VERSION"
-_date = "2020-01-07"
+date = "2020-01-07"
 
-# The rest of the keys in `profile.toml`. 
+# The profile object
+[profile]
+# ...
 
 # The subject TOML
 [subject]
 # ...
 
 # The master note TOML
-[_master]
+[master]
 # ...
 ----
 
