@@ -107,6 +107,12 @@ impl Deref for TemplateHandlebarsRegistry {
     }
 }
 
+impl AsMut<handlebars::Handlebars> for TemplateHandlebarsRegistry {
+    fn as_mut(&mut self) -> &mut handlebars::Handlebars {
+        &mut self.0
+    }
+}
+
 impl TemplateHandlebarsRegistry {
     /// Creates a new instance of the registry.
     pub fn new() -> Self {

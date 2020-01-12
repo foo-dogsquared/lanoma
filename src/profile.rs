@@ -4,6 +4,9 @@ use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use chrono;
+use handlebars;
+use heck::{CamelCase, KebabCase, SnakeCase, TitleCase};
 use toml::{self, Value};
 
 use crate::config::ProfileConfig;
@@ -11,7 +14,7 @@ use crate::consts;
 use crate::error::Error;
 use crate::helpers;
 use crate::templates::{self, TemplateGetter};
-use crate::{Object, Result};
+use crate::Object;
 
 // profile constants
 pub const PROFILE_METADATA_FILENAME: &str = ".profile.toml";
@@ -20,6 +23,54 @@ pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = ".templates";
 pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
 pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master/_default";
+
+// Define all of the Handlebars helper functions. 
+handlebars::handlebars_helper!(kebab_case: |s: str| s.to_kebab_case());
+handlebars::handlebars_helper!(snake_case: |s: str| s.to_snake_case());
+handlebars::handlebars_helper!(title_case: |s: str| s.to_title_case());
+handlebars::handlebars_helper!(camel_case: |s: str| s.to_camel_case());
+handlebars::handlebars_helper!(upper_case: |s: str| s.to_uppercase());
+handlebars::handlebars_helper!(lower_case: |s: str| s.to_lowercase());
+fn relpath(
+    h: &handlebars::Helper,
+    _: &handlebars::Handlebars,
+    _: &handlebars::Context,
+    _rc: &mut handlebars::RenderContext,
+    out: &mut dyn handlebars::Output,
+) -> handlebars::HelperResult {
+    let dst = PathBuf::from(
+        h.param(0)
+            .and_then(|v| v.value().as_str())
+            .unwrap_or(""),
+    );
+    let base = PathBuf::from(
+        h.param(1)
+            .and_then(|v| v.value().as_str())
+            .unwrap_or(""),
+    );
+    let result = helpers::fs::relative_path_from(dst, base).unwrap_or(PathBuf::new());
+
+    out.write(result.to_str().unwrap_or(""))?;
+    Ok(())
+}
+
+fn reldate(
+    h: &handlebars::Helper,
+    _: &handlebars::Handlebars,
+    _: &handlebars::Context,
+    rc: &mut handlebars::RenderContext,
+    out: &mut dyn handlebars::Output,
+) -> handlebars::HelperResult {
+    let format = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("%F");
+    let relative_days = h.param(1).and_then(|v| v.value().as_i64()).unwrap_or(0);
+    let now = chrono::Local::now();
+    let days = chrono::Duration::days(relative_days);
+
+    let datetime_delta = now + days;
+
+    out.write(datetime_delta.format(format).to_string().as_ref())?;
+    Ok(())
+}
 
 /// A builder for constructing the profile.
 /// Setting the values does not consume the builder for dynamic setting.
@@ -131,13 +182,24 @@ impl Profile {
     /// Opens an initiated profile.
     ///
     /// If the profile does not exist in the given path, it will cause an error.
-    pub fn from<P: AsRef<Path>>(path: P) -> Result<Self> {
+    /// It will also detect the contents of the files inside of the templates directory to be registered to the Handlebars registry.
+    pub fn from<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let path: PathBuf = path.as_ref().to_path_buf();
 
         let mut profile = Self::new();
 
         profile.path = fs::canonicalize(path).map_err(Error::IoError)?;
-        profile.set_templates()?;
+        if !profile.has_templates() {
+            return Err(Error::InvalidProfileError(profile.path.clone()));
+        }
+
+        profile.init_templates()?;
+        // Getting the templates with a specific file extension.
+        // This also overrides the default templates if found any.
+        let templates =
+            TemplateGetter::get_templates(profile.templates_path(), TEMPLATE_FILE_EXTENSION)?;
+        profile.templates.register_vec(&templates)?;
+
         profile.config = ProfileConfig::try_from(profile.metadata_path())?;
 
         Ok(profile)
@@ -155,15 +217,10 @@ impl Profile {
         &self.templates
     }
 
-    /// Insert the contents of the files inside of the templates directory of the profile in the Handlebars registry.
-    ///
-    /// Take note it will only get the contents of the top-level files in the templates folder.
-    pub fn set_templates(&mut self) -> Result<()> {
-        if !self.has_templates() {
-            return Err(Error::InvalidProfileError(self.path.clone()));
-        }
-
+    /// Initialize the template registry.
+    fn init_templates(&mut self) -> Result<(), Error> {
         let mut registry = templates::TemplateHandlebarsRegistry::new();
+
         // registering with the default templates
         registry.register_template_string(PROFILE_NOTE_TEMPLATE_NAME, consts::NOTE_TEMPLATE)?;
         registry.register_template_string(
@@ -171,9 +228,17 @@ impl Profile {
             consts::MASTER_NOTE_TEMPLATE,
         )?;
 
-        let templates =
-            TemplateGetter::get_templates(self.templates_path(), TEMPLATE_FILE_EXTENSION)?;
-        registry.register_vec(&templates)?;
+        // Registering some helper functions in the Handlebars registry.
+        let registry_as_mut = registry.as_mut();
+        registry_as_mut.register_helper("upper-case", Box::new(upper_case));
+        registry_as_mut.register_helper("lower-case", Box::new(lower_case));
+        registry_as_mut.register_helper("kebab-case", Box::new(kebab_case));
+        registry_as_mut.register_helper("snake-case", Box::new(snake_case));
+        registry_as_mut.register_helper("camel-case", Box::new(camel_case));
+        registry_as_mut.register_helper("title-case", Box::new(title_case));
+        registry_as_mut.register_helper("reldate", Box::new(reldate));
+        registry_as_mut.register_helper("relpath", Box::new(relpath));
+
         self.templates = registry;
 
         Ok(())
@@ -216,7 +281,7 @@ impl Profile {
     }
 
     /// Get the metadata from the profile.
-    pub fn get_metadata(&self) -> Result<ProfileConfig> {
+    pub fn get_metadata(&self) -> Result<ProfileConfig, Error> {
         if !self.is_valid() {
             return Err(Error::InvalidProfileError(self.path.clone()));
         }
@@ -230,7 +295,7 @@ impl Profile {
     }
 
     /// Export the profile in the filesystem.
-    pub fn export(&mut self) -> Result<()> {
+    pub fn export(&mut self) -> Result<(), Error> {
         let dir_builder = DirBuilder::new();
 
         if self.is_valid() {
@@ -289,7 +354,7 @@ mod tests {
     use tempfile;
     use toml;
 
-    fn tmp_profile() -> Result<(tempfile::TempDir, Profile)> {
+    fn tmp_profile() -> Result<(tempfile::TempDir, Profile), Error> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
         let mut profile_builder = ProfileBuilder::new();
         profile_builder.path(tmp_dir.path());
@@ -297,7 +362,7 @@ mod tests {
         Ok((tmp_dir, profile_builder.build()))
     }
 
-    fn tmp_shelf() -> Result<(tempfile::TempDir, Shelf)> {
+    fn tmp_shelf() -> Result<(tempfile::TempDir, Shelf), Error> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
         let shelf = Shelf::from(tmp_dir.path())?;
 
@@ -305,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn basic_profile_usage() -> Result<()> {
+    fn basic_profile_usage() -> Result<(), Error> {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
         let (_, mut shelf) = tmp_shelf()?;
 
@@ -347,7 +412,7 @@ mod tests {
 
     #[ignore]
     #[test]
-    fn basic_profile_usage_with_compilation_notes() -> Result<()> {
+    fn basic_profile_usage_with_compilation_notes() -> Result<(), Error> {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
         let (_, mut shelf) = tmp_shelf()?;
 
@@ -414,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn basic_profile_template_usage() -> Result<()> {
+    fn basic_profile_template_usage() -> Result<(), Error> {
         let (tmp_dir, mut profile) = tmp_profile()?;
         profile.export()?;
 

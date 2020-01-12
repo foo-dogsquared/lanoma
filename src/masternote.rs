@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
+use std::process;
+use std::str::FromStr;
 
 use toml;
 
 use crate::error::Error;
 use crate::helpers;
 use crate::note::Note;
-use crate::shelf::{Shelf, ShelfData, ShelfItem};
+use crate::shelf::{self, Shelf, ShelfData, ShelfItem, ToCommand};
 use crate::subjects::Subject;
 use crate::Object;
 use crate::Result;
+use crate::HANDLEBARS_REG;
 
 #[macro_use]
 use crate::modify_toml_table;
@@ -51,12 +54,9 @@ impl ShelfData<&Shelf> for MasterNote {
             .map(|note| ShelfData::data(note, (self.subject(), &shelf)))
             .collect();
 
-        let master_note_path = self.path_in_shelf(&shelf);
         modify_toml_table! {master_note_as_toml,
             ("notes", notes_toml),
-            ("_path", self.path().to_string_lossy()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(master_note_path.clone(), &shelf.path()).unwrap()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), master_note_path).unwrap())
+            ("path", self.path().to_string_lossy())
         };
 
         master_note_as_toml
@@ -143,5 +143,22 @@ impl MasterNote {
     /// Return the file name of the master note.
     pub fn file_name(&self) -> String {
         MASTER_NOTE_FILE.to_string()
+    }
+}
+
+impl ToCommand for MasterNote {
+    fn to_command<S>(
+        &self,
+        cmd: S,
+    ) -> process::Command
+    where
+        S: AsRef<str>,
+    {
+        let cmd = cmd.as_ref();
+        let resulting_toml = format!("note = '{}'", self.file_name());
+        let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
+        let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
+
+        shelf::str_as_cmd(command_string)
     }
 }

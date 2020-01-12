@@ -255,6 +255,38 @@ mod tests {
         assert_eq!(relative_path_from(dst, base), Some("".into()));
     }
 
+    #[test]
+    fn relpath_with_dst_parent_dir() {
+        let base = PathBuf::from("./");
+        let dst = PathBuf::from("../rust");
+
+        assert_eq!(relative_path_from(dst, base), Some("../rust".into()));
+    }
+
+    #[test]
+    fn relpath_with_base_parent_dir() {
+        let base = PathBuf::from("../rust");
+        let dst = PathBuf::from("./");
+
+        assert_eq!(relative_path_from(dst, base), None);
+    }
+
+    #[test]
+    fn relpath_with_common_parent_dir() {
+        let base = PathBuf::from("../rust/");
+        let dst = PathBuf::from("../rust/././bin");
+
+        assert_eq!(relative_path_from(dst, base), Some("bin".into()));
+    }
+
+    #[test]
+    fn relpath_with_common_parent_dirs() {
+        let base = PathBuf::from("../rust/../../../");
+        let dst = PathBuf::from("../rust");
+
+        assert_eq!(relative_path_from(dst, base), Some("../../..".into()));
+    }
+
     #[cfg(unix)]
     #[test]
     fn relpath_from_root_to_current_dir() {

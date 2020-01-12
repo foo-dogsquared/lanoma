@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{self, PathBuf};
+use std::process;
+use std::str::FromStr;
 
 use chrono::{self};
 use heck::KebabCase;
@@ -10,10 +12,9 @@ use toml;
 
 use crate::error::Error;
 use crate::helpers;
-use crate::shelf::{Shelf, ShelfData, ShelfItem};
+use crate::shelf::{self, Shelf, ShelfData, ShelfItem, ToCommand};
 use crate::subjects::Subject;
-use crate::Object;
-use crate::Result;
+use crate::{Object, Result, HANDLEBARS_REG};
 
 #[macro_use]
 use crate::modify_toml_table;
@@ -93,8 +94,7 @@ impl Object for Note {
         let mut note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
         modify_toml_table! {note_as_toml,
             ("title", self.title()),
-            ("_slug", self.title().to_kebab_case()),
-            ("_file", self.file_name())
+            ("file", self.file_name())
         };
 
         note_as_toml
@@ -107,12 +107,9 @@ impl ShelfData<(&Subject, &Shelf)> for Note {
         params: (&Subject, &Shelf),
     ) -> toml::Value {
         let mut note_as_toml = Object::data(self);
-        let note_path = self.path_in_shelf(params);
-        let (_, shelf) = params;
+
         modify_toml_table! {note_as_toml,
-            ("_path", note_path.clone()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), note_path.clone()).unwrap().to_str().unwrap()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(note_path, &shelf.path()).unwrap().to_str().unwrap())
+            ("path_in_shelf", self.path_in_shelf(params))
         };
 
         note_as_toml
@@ -211,5 +208,22 @@ impl Note {
         slug.push_str(".tex");
 
         slug
+    }
+}
+
+impl ToCommand for Note {
+    fn to_command<S>(
+        &self,
+        cmd: S,
+    ) -> process::Command
+    where
+        S: AsRef<str>,
+    {
+        let cmd = cmd.as_ref();
+        let resulting_toml = format!("note = '{}'", self.file_name());
+        let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
+        let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
+
+        shelf::str_as_cmd(command_string)
     }
 }

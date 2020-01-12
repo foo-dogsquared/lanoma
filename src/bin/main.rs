@@ -18,7 +18,7 @@ use texture_notes_v2::note::Note;
 use texture_notes_v2::profile::{
     Profile, ProfileBuilder, PROFILE_MASTER_NOTE_TEMPLATE_NAME, PROFILE_NOTE_TEMPLATE_NAME,
 };
-use texture_notes_v2::shelf::{ExportOptions, Shelf, ShelfData, ShelfItem};
+use texture_notes_v2::shelf::{ExportOptions, Shelf, ShelfData, ShelfItem, ToCommand};
 use texture_notes_v2::subjects::Subject;
 use texture_notes_v2::threadpool::ThreadPool;
 use texture_notes_v2::CompilationEnvironment;
@@ -418,8 +418,7 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                     let command = command.clone();
                     env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
                     thread_pool.execute(move || {
-                        let mut master_note_compilation_cmd =
-                            texture_notes_v2::master_note_to_cmd(&master_note, command);
+                        let mut master_note_compilation_cmd = master_note.to_command(command);
                         let output = master_note_compilation_cmd.output().unwrap();
 
                         if output.status.success() {
@@ -446,13 +445,14 @@ fn master_note_full_object(
     let subject_as_toml = ShelfData::data(master_note.subject(), &shelf);
     let master_note_as_toml = ShelfData::data(master_note, &shelf);
     let profile_config = Object::data(profile);
+    let shelf_data = Object::data(shelf);
 
     let mut metadata = toml::Value::from(HashMap::<String, toml::Value>::new());
     modify_toml_table! {metadata,
         ("profile", profile_config),
         ("subject", subject_as_toml),
         ("master", master_note_as_toml),
-        ("date", chrono::Local::now().format("%F").to_string())
+        ("shelf", shelf_data)
     }
 
     metadata
@@ -467,6 +467,7 @@ fn note_full_object(
     let subject_toml = ShelfData::data(subject, &shelf);
     let note_toml = ShelfData::data(note, (&subject, &shelf));
     let profile_config = Object::data(profile);
+    let shelf_data = Object::data(shelf);
 
     // The metadata is guaranteed to be valid since the codebase enforces it to be valid either at creation
     // or at retrieval from a folder.
@@ -476,7 +477,7 @@ fn note_full_object(
         ("profile", profile_config),
         ("subject", subject_toml),
         ("note", note_toml),
-        ("date", toml::Value::String(chrono::Local::now().format("%F").to_string()))
+        ("shelf", shelf_data)
     };
 
     metadata

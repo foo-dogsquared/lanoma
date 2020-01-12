@@ -33,8 +33,8 @@ impl Object for Subject {
         let mut subject_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
         modify_toml_table! {subject_as_toml,
             ("name", self.name()),
-            ("_slug", self.name().to_kebab_case()),
-            ("_path", self.path())
+            ("_path", self.path()),
+            ("_full_name", self.full_name())
         };
 
         subject_as_toml
@@ -57,15 +57,13 @@ impl ShelfData<&Shelf> for Subject {
             Err(_e) => toml::Value::from(HashMap::<String, toml::Value>::new()),
         };
 
-        let subject_path = self.path_in_shelf(&shelf);
         upsert_toml_table! {subject_as_toml,
             ("name", self.name())
         };
         modify_toml_table! {subject_as_toml,
-            ("_slug", self.name().to_kebab_case()),
-            ("_path", subject_path.clone()),
-            ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), subject_path.clone()).unwrap().to_str().unwrap()),
-            ("_relpath_from_shelf", helpers::fs::relative_path_from(subject_path, &shelf.path()).unwrap().to_str().unwrap())
+            ("_full_name", self.full_name()),
+            ("_path", self.path()),
+            ("_path_in_shelf", self.path_in_shelf(&shelf))
         };
 
         subject_as_toml

@@ -5,7 +5,8 @@ use std::str::FromStr;
 use std::sync;
 use std::thread;
 
-use handlebars;
+#[macro_use]
+extern crate handlebars;
 use toml::{self};
 
 #[macro_use]
@@ -25,7 +26,7 @@ pub mod threadpool;
 
 use crate::masternote::MasterNote;
 use crate::note::Note;
-use crate::shelf::{Shelf, ShelfItem};
+use crate::shelf::{Shelf, ShelfItem, ToCommand};
 use crate::subjects::Subject;
 use error::Error;
 
@@ -33,7 +34,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 // Making it static since it does not handle any templates anyway and only here for rendering the string.
 lazy_static! {
-    static ref HANDLEBARS_REG: handlebars::Handlebars = handlebars::Handlebars::new();
+    pub static ref HANDLEBARS_REG: handlebars::Handlebars = handlebars::Handlebars::new();
 }
 
 pub trait Object {
@@ -154,7 +155,7 @@ impl CompilationEnvironment {
                 let mut compiled_notes = compiled_notes_mutex.lock().unwrap();
 
                 while let Some(note) = compilation_environment.notes.pop() {
-                    let mut command_process = note_to_cmd(&note, &compilation_environment.command);
+                    let mut command_process = note.to_command(&compilation_environment.command);
 
                     let command_output = match command_process.output().map_err(Error::IoError) {
                         Ok(v) => v,
@@ -182,49 +183,4 @@ impl CompilationEnvironment {
             Err(_e) => Err(Error::ValueError),
         }
     }
-}
-
-pub fn str_as_cmd<S>(string: S) -> process::Command
-where
-    S: AsRef<str>,
-{
-    let string = string.as_ref();
-    let mut command_iter = string.split_whitespace();
-
-    let mut command_process = process::Command::new(command_iter.next().unwrap());
-    for arg in command_iter.into_iter() {
-        command_process.arg(arg);
-    }
-
-    command_process
-}
-
-pub fn note_to_cmd<S>(
-    note: &Note,
-    cmd: S,
-) -> process::Command
-where
-    S: AsRef<str>,
-{
-    let cmd = cmd.as_ref();
-    let resulting_toml = format!("note = '{}'", note.file_name());
-    let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
-    let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
-
-    str_as_cmd(command_string)
-}
-
-pub fn master_note_to_cmd<S>(
-    master_note: &MasterNote,
-    cmd: S,
-) -> process::Command
-where
-    S: AsRef<str>,
-{
-    let cmd = cmd.as_ref();
-    let resulting_toml = format!("note = '{}'", master_note.file_name());
-    let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
-    let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
-
-    str_as_cmd(command_string)
 }

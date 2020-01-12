@@ -6,13 +6,13 @@ pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, cr
 % document metadata
 \author{ {{~profile.name~}} }
 \title{ {{~subject.name~}} }
-\date{ {{~date~}} }
+\date{ {{~reldate~}} }
 
 \begin{document}
 % Frontmatter of the class note
 
 {{#each master.notes}}
-\include{ {{~this._slug}}.tex}
+Note: {{this.name}} {{this.path_in_shelf}}
 {{/each }}
 
 \end{document}
@@ -23,7 +23,7 @@ pub const NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, crop=fals
 % document metadata
 \author{ {{~profile.name~}} }
 \title{ {{~note.title~}} }
-\date{ {{~date~}} }
+\date{ {{~reldate~}} }
 
 \begin{document}
 Sample content.
