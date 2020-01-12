@@ -76,11 +76,9 @@ impl Worker {
 
             match message {
                 Message::NewJob(job) => {
-                    println!("Worker {} got a job; executing", id);
                     job.call_box();
                 }
                 Message::Terminate => {
-                    println!("Worker {} got a terminating message;", id);
                     break;
                 }
             }

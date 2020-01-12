@@ -10,15 +10,8 @@ use crate::config::ProfileConfig;
 use crate::consts;
 use crate::error::Error;
 use crate::helpers;
-use crate::masternote::MasterNote;
-use crate::note::Note;
-use crate::shelf::{Shelf, ShelfData};
-use crate::subjects::Subject;
-use crate::templates::{self, TemplateGetter, TemplateRegistry};
+use crate::templates::{self, TemplateGetter};
 use crate::{Object, Result};
-
-#[macro_use]
-use crate::{modify_toml_table, upsert_toml_table};
 
 // profile constants
 pub const PROFILE_METADATA_FILENAME: &str = ".profile.toml";
@@ -288,7 +281,10 @@ impl Profile {
 mod tests {
     use super::*;
     use crate::helpers;
-    use crate::shelf::{ExportOptions, Shelf, ShelfItem};
+    use crate::note::Note;
+    use crate::shelf::{Shelf, ShelfItem};
+    use crate::subjects::Subject;
+    use crate::templates::TemplateRegistry;
     use crate::CompilationEnvironment;
     use tempfile;
     use toml;
@@ -311,7 +307,7 @@ mod tests {
     #[test]
     fn basic_profile_usage() -> Result<()> {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
-        let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
+        let (_, mut shelf) = tmp_shelf()?;
 
         assert!(profile.export().is_ok());
         assert!(shelf.export().is_ok());
@@ -353,7 +349,7 @@ mod tests {
     #[test]
     fn basic_profile_usage_with_compilation_notes() -> Result<()> {
         let (profile_tmp_dir, mut profile) = tmp_profile()?;
-        let (shelf_tmp_dir, mut shelf) = tmp_shelf()?;
+        let (_, mut shelf) = tmp_shelf()?;
 
         assert!(profile.export().is_ok());
         assert!(shelf.export().is_ok());
@@ -432,7 +428,7 @@ mod tests {
             .write("LOL".as_bytes())
             .map_err(Error::IoError)?;
 
-        let mut profile = Profile::from(tmp_dir.path())?;
+        let profile = Profile::from(tmp_dir.path())?;
         assert_eq!(
             profile
                 .templates

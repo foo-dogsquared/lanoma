@@ -229,7 +229,7 @@ fn is_parent_dir(component: Component) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     #[test]
     fn relpath_to_common_relpaths() {

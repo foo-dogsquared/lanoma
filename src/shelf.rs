@@ -1,8 +1,5 @@
-use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::Write;
+use std::fs::{self, DirBuilder};
 use std::path::{Path, PathBuf};
-
-use globwalk;
 
 use crate::error::Error;
 use crate::helpers;
@@ -156,9 +153,8 @@ mod tests {
     }
 
     #[test]
-    fn basic_note_usage() -> Result<()> {
+    fn basic_shelf_usage() -> Result<()> {
         let mut shelf = tmp_shelf()?;
-        let export_options = ExportOptions::new();
 
         assert!(shelf.export().is_ok());
 
@@ -166,6 +162,7 @@ mod tests {
             .into_iter()
             .map(|subject| Subject::new(subject))
             .collect();
+        let subject = &test_subject_input[0].clone();
         let test_note_input: Vec<Note> = vec![
             "Precalculus Quick Review",
             "Introduction to Integrations",
@@ -181,29 +178,28 @@ mod tests {
             .collect();
         assert_eq!(created_subjects.len(), 3);
 
-        // let created_notes = shelf.create_notes(
-        //     &test_subject_input[0],
-        //     &test_note_input,
-        //     consts::NOTE_TEMPLATE,
-        //     &export_options,
-        // );
-        // assert_eq!(created_notes.len(), 3);
+        let created_notes: Vec<Note> = test_note_input
+            .into_iter()
+            .filter(|note| note.export((&subject, &shelf)).is_ok())
+            .collect();
+        assert_eq!(created_notes.len(), 3);
 
-        // let available_notes = shelf.get_notes(&test_subject_input[0], &test_note_input);
-        // assert_eq!(available_notes.len(), 3);
+        let all_available_notes_from_fs =
+            subject.get_notes_in_fs(&vec!["*.tex".to_string()], &shelf)?;
+        assert_eq!(all_available_notes_from_fs.len(), 3);
 
-        // let all_available_notes_from_fs = shelf.get_notes_in_fs(
-        //     &test_subject_input[0].note_filter(&shelf),
-        //     &test_subject_input[0],
-        // )?;
-        // assert_eq!(all_available_notes_from_fs.len(), 3);
+        let deleted_notes: Vec<Note> = created_notes
+            .into_iter()
+            .filter(|note| note.delete((&subject, &shelf)).is_ok())
+            .collect();
+        assert_eq!(deleted_notes.len(), 3);
 
-        // let deleted_notes = shelf.delete_notes(&test_subject_input[0], &test_note_input);
-        // assert_eq!(deleted_notes.len(), 3);
-
-        // // It became 2 because the algebra subject is deleted along with the precalculus subject.
-        // let deleted_subjects = shelf.delete_subjects(&test_subject_input);
-        // assert_eq!(deleted_subjects.len(), 2);
+        // It became 2 because the algebra subject is deleted along with the precalculus subject.
+        let deleted_subjects: Vec<Subject> = created_subjects
+            .into_iter()
+            .filter(|subject| subject.delete(&shelf).is_ok())
+            .collect();
+        assert_eq!(deleted_subjects.len(), 2);
 
         Ok(())
     }
@@ -211,8 +207,6 @@ mod tests {
     #[test]
     fn subject_instances_test() -> Result<()> {
         let mut shelf = tmp_shelf()?;
-
-        let export_options: ExportOptions = ExportOptions::new();
 
         assert!(shelf.export().is_ok());
 

@@ -45,8 +45,11 @@ impl ShelfData<&Shelf> for MasterNote {
         shelf: &Shelf,
     ) -> toml::Value {
         let mut master_note_as_toml = Object::data(self);
-        let notes_toml: Vec<toml::Value> =
-            self.notes.iter().map(|note| ShelfData::data(note, (self.subject(), &shelf))).collect();
+        let notes_toml: Vec<toml::Value> = self
+            .notes
+            .iter()
+            .map(|note| ShelfData::data(note, (self.subject(), &shelf)))
+            .collect();
 
         let master_note_path = self.path_in_shelf(&shelf);
         modify_toml_table! {master_note_as_toml,

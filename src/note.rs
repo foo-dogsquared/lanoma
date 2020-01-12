@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::path::{self, PathBuf};
 
 use chrono::{self};
+use heck::KebabCase;
 use serde::{Deserialize, Serialize};
 use toml;
 
@@ -73,7 +74,7 @@ impl ShelfItem<(&Subject, &Shelf)> for Note {
         &self,
         params: (&Subject, &Shelf),
     ) -> Result<()> {
-        let (subject, shelf) = params;
+        let (_, shelf) = params;
         if !shelf.is_valid() {
             return Err(Error::UnexportedShelfError(shelf.path()));
         }
@@ -92,7 +93,7 @@ impl Object for Note {
         let mut note_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
         modify_toml_table! {note_as_toml,
             ("title", self.title()),
-            ("_slug", helpers::string::kebab_case(self.title())),
+            ("_slug", self.title().to_kebab_case()),
             ("_file", self.file_name())
         };
 
@@ -107,7 +108,7 @@ impl ShelfData<(&Subject, &Shelf)> for Note {
     ) -> toml::Value {
         let mut note_as_toml = Object::data(self);
         let note_path = self.path_in_shelf(params);
-        let (subject, shelf) = params;
+        let (_, shelf) = params;
         modify_toml_table! {note_as_toml,
             ("_path", note_path.clone()),
             ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), note_path.clone()).unwrap().to_str().unwrap()),
@@ -206,7 +207,7 @@ impl Note {
 
     /// Returns the file name of the note.
     pub fn file_name(&self) -> String {
-        let mut slug = helpers::string::kebab_case(&self.title);
+        let mut slug = self.title.to_kebab_case();
         slug.push_str(".tex");
 
         slug

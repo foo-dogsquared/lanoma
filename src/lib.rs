@@ -44,7 +44,7 @@ pub trait Object {
 #[macro_export]
 macro_rules! modify_toml_table {
     ($var:ident, $( ($field:expr, $value:expr) ),*) => {
-        let mut temp_table = $var.as_table_mut().unwrap();
+        let temp_table = $var.as_table_mut().unwrap();
 
         $(
             temp_table.insert(String::from($field), toml::Value::try_from($value).unwrap());
@@ -56,7 +56,7 @@ macro_rules! modify_toml_table {
 #[macro_export]
 macro_rules! upsert_toml_table {
     ($var:ident, $( ($field:expr, $value:expr) ),*) => {
-        let mut temp_table = $var.as_table_mut().unwrap();
+        let temp_table = $var.as_table_mut().unwrap();
 
         $(
             if temp_table.get($field).is_none() {
@@ -137,11 +137,6 @@ impl CompilationEnvironment {
     ) -> Result<Vec<Note>> {
         let original_dir = env::current_dir().map_err(Error::IoError)?;
         let compilation_dst = self.subject.path_in_shelf(&shelf);
-        println!(
-            "{:?} {:?}",
-            env::current_dir().map_err(Error::IoError)?,
-            &compilation_dst
-        );
         env::set_current_dir(&compilation_dst).map_err(Error::IoError)?;
 
         // this will serve as a task queue for the threads to be spawned
@@ -149,6 +144,7 @@ impl CompilationEnvironment {
         let compilation_environment = sync::Arc::new(sync::Mutex::new(self));
         let compiled_notes = sync::Arc::new(sync::Mutex::new(vec![]));
         let mut threads = vec![];
+        let thread_pool = threadpool::ThreadPool::new(thread_count as usize);
 
         for _i in 0..thread_count {
             let compilation_environment_mutex = sync::Arc::clone(&compilation_environment);

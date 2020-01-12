@@ -11,6 +11,7 @@ use structopt::StructOpt;
 use std::path::PathBuf;
 
 extern crate texture_notes_v2;
+use texture_notes_v2::config::SubjectConfig;
 use texture_notes_v2::error::Error;
 use texture_notes_v2::masternote::MasterNote;
 use texture_notes_v2::note::Note;
@@ -385,13 +386,13 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
             let profile = Profile::from(&profile_path)?;
             let command = command.unwrap_or(profile.compile_note_command());
 
-            let thread_pool = ThreadPool::new(4);
+            let thread_pool = ThreadPool::new(subjects.len());
             for subject_name in subjects {
                 let subject = match Subject::from_shelf(&subject_name, &shelf) {
                     Ok(v) => v,
                     Err(_e) => continue,
                 };
-                let subject_config = subject.get_config(&shelf)?;
+                let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
                 let files = files.as_ref().unwrap_or(&subject_config.files);
 
                 let notes = subject.get_notes_in_fs(&files, &shelf)?;
@@ -419,7 +420,13 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                     thread_pool.execute(move || {
                         let mut master_note_compilation_cmd =
                             texture_notes_v2::master_note_to_cmd(&master_note, command);
-                        let output = master_note_compilation_cmd.output();
+                        let output = master_note_compilation_cmd.output().unwrap();
+
+                        if output.status.success() {
+                            println!("Master note for '{:?}' has successfully compiled.", subject.name());
+                        } else {
+                            println!("Master note for '{:?}' has failed to compile.\nPlease check the folder for the log.", subject.name());
+                        }
                     });
                     env::set_current_dir(original_dir).map_err(Error::IoError)?;
                 }

@@ -4,6 +4,7 @@ use std::io;
 use std::path::{self, PathBuf};
 
 use chrono::{self};
+use heck::KebabCase;
 use serde::{Deserialize, Serialize};
 use toml;
 
@@ -32,7 +33,7 @@ impl Object for Subject {
         let mut subject_as_toml = toml::Value::from(HashMap::<String, toml::Value>::new());
         modify_toml_table! {subject_as_toml,
             ("name", self.name()),
-            ("_slug", helpers::string::kebab_case(&self.name())),
+            ("_slug", self.name().to_kebab_case()),
             ("_path", self.path())
         };
 
@@ -61,7 +62,7 @@ impl ShelfData<&Shelf> for Subject {
             ("name", self.name())
         };
         modify_toml_table! {subject_as_toml,
-            ("_slug", helpers::string::kebab_case(&self.name())),
+            ("_slug", self.name().to_kebab_case()),
             ("_path", subject_path.clone()),
             ("_relpath_to_shelf", helpers::fs::relative_path_from(&shelf.path(), subject_path.clone()).unwrap().to_str().unwrap()),
             ("_relpath_from_shelf", helpers::fs::relative_path_from(subject_path, &shelf.path()).unwrap().to_str().unwrap())
@@ -217,7 +218,7 @@ impl Subject {
                 let s = component.as_os_str().to_str().unwrap();
 
                 match component {
-                    path::Component::Normal(c) => helpers::string::kebab_case(c.to_str().unwrap()),
+                    path::Component::Normal(c) => c.to_str().unwrap().to_kebab_case(),
                     _ => s.to_string(),
                 }
             })
