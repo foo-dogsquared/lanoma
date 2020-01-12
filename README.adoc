@@ -59,6 +59,15 @@ I've also met people online that are more content with a simple list of director
 
 
 
+== Reason this program exists 
+
+* It is a learning project with the https://www.rust-lang.org/[Rust language]. 
+
+* Create an executable that can be easily be sent to others without the hassle of setting up whatsoever. 
+
+
+
+
 == Installation 
 
 You can simply download the https://github.com/foo-dogsquared/texture-notes-v2/releases[provided binaries in the releases page]. 
