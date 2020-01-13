@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
-use std::path::{self, PathBuf};
-use std::process;
-use std::str::FromStr;
+use std::io;
+use std::path::{PathBuf};
 
 use chrono::{self};
 use heck::KebabCase;
@@ -11,10 +9,9 @@ use serde::{Deserialize, Serialize};
 use toml;
 
 use crate::error::Error;
-use crate::helpers;
-use crate::shelf::{self, Shelf, ShelfData, ShelfItem, ToCommand};
+use crate::shelf::{Shelf, ShelfData, ShelfItem};
 use crate::subjects::Subject;
-use crate::{Object, Result, HANDLEBARS_REG};
+use crate::{Object, Result};
 
 #[macro_use]
 use crate::modify_toml_table;
@@ -211,19 +208,3 @@ impl Note {
     }
 }
 
-impl ToCommand for Note {
-    fn to_command<S>(
-        &self,
-        cmd: S,
-    ) -> process::Command
-    where
-        S: AsRef<str>,
-    {
-        let cmd = cmd.as_ref();
-        let resulting_toml = format!("note = '{}'", self.file_name());
-        let note_as_toml = toml::Value::from_str(&resulting_toml).unwrap();
-        let command_string = HANDLEBARS_REG.render_template(&cmd, &note_as_toml).unwrap();
-
-        shelf::str_as_cmd(command_string)
-    }
-}

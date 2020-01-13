@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs::{self, DirBuilder};
 use std::path::{Path, PathBuf};
-use std::process;
 
 use crate::error::Error;
 use crate::helpers;
@@ -153,31 +152,6 @@ pub trait ShelfData<S>: Object + ShelfItem<S> {
         &self,
         params: S,
     ) -> toml::Value;
-}
-
-/// A trait that converts an object into a command struct.
-pub trait ToCommand {
-    fn to_command<S>(
-        &self,
-        command: S,
-    ) -> process::Command
-    where
-        S: AsRef<str>;
-}
-
-pub fn str_as_cmd<S>(string: S) -> process::Command
-where
-    S: AsRef<str>,
-{
-    let string = string.as_ref();
-    let mut command_iter = string.split_whitespace();
-
-    let mut command_process = process::Command::new(command_iter.next().unwrap());
-    for arg in command_iter.into_iter() {
-        command_process.arg(arg);
-    }
-
-    command_process
 }
 
 #[cfg(test)]

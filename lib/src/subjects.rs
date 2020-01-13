@@ -126,7 +126,7 @@ impl Subject {
     /// # Example
     ///
     /// ```
-    /// use texture_notes_v2::subjects::Subject;
+    /// use texture_notes_lib::subjects::Subject;
     ///
     /// assert_eq!(Subject::new("Mathematics").name(), Subject::new("Mathematics/Calculus/..").name())
     /// ```
@@ -290,7 +290,7 @@ impl Subject {
     /// # Example
     ///
     /// ```
-    /// use texture_notes_v2::subjects::Subject;
+    /// use texture_notes_lib::subjects::Subject;
     ///
     /// let subject = Subject::new("Bachelor I/Semester I/Calculus");
     ///
@@ -303,24 +303,10 @@ impl Subject {
     /// assert!(split_subjects.next().is_none());
     /// ```
     pub fn split_subjects(&self) -> Vec<Self> {
-        let mut subjects: Vec<Self> = vec![];
-
         let path = PathBuf::from(&self.name);
-        for component in path.components() {
-            let s = match subjects.iter().last() {
-                Some(item) => {
-                    let mut item_path = PathBuf::from(&item.name);
-                    item_path.push(component.as_os_str());
-
-                    Subject::new(item_path.to_str().unwrap())
-                }
-                None => Subject::new(component.as_os_str().to_str().unwrap()),
-            };
-
-            subjects.push(s);
-        }
-
-        subjects
+        path.ancestors()
+            .map(|ancestor| Self::new(ancestor.to_str().unwrap()))
+            .collect()
     }
 
     /// Get the notes in the shelf filesystem.

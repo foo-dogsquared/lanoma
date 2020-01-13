@@ -1,3 +1,9 @@
+//! A profile is an object that holds all of the required information for the operations in Texture Notes. 
+//! For now, a profile contains the metadata and the templates. 
+//! 
+//! On the filesystem, it is represented as a folder with specific files and folders. 
+//! The required component in the filesystem is the profile metadata. 
+
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs::{self, DirBuilder, OpenOptions};
@@ -24,7 +30,7 @@ pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
 pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master/_default";
 
-// Define all of the Handlebars helper functions. 
+// Define all of the Handlebars helper functions.
 handlebars::handlebars_helper!(kebab_case: |s: str| s.to_kebab_case());
 handlebars::handlebars_helper!(snake_case: |s: str| s.to_snake_case());
 handlebars::handlebars_helper!(title_case: |s: str| s.to_title_case());
@@ -38,16 +44,8 @@ fn relpath(
     _rc: &mut handlebars::RenderContext,
     out: &mut dyn handlebars::Output,
 ) -> handlebars::HelperResult {
-    let dst = PathBuf::from(
-        h.param(0)
-            .and_then(|v| v.value().as_str())
-            .unwrap_or(""),
-    );
-    let base = PathBuf::from(
-        h.param(1)
-            .and_then(|v| v.value().as_str())
-            .unwrap_or(""),
-    );
+    let dst = PathBuf::from(h.param(0).and_then(|v| v.value().as_str()).unwrap_or(""));
+    let base = PathBuf::from(h.param(1).and_then(|v| v.value().as_str()).unwrap_or(""));
     let result = helpers::fs::relative_path_from(dst, base).unwrap_or(PathBuf::new());
 
     out.write(result.to_str().unwrap_or(""))?;
@@ -166,6 +164,15 @@ pub struct Profile {
 impl Object for Profile {
     fn data(&self) -> toml::Value {
         toml::Value::try_from(self.config()).unwrap()
+    }
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        let mut profile = Self::new();
+        profile.init_templates().unwrap();
+
+        profile
     }
 }
 
@@ -345,12 +352,12 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compile::{Compilable, CompilationEnvironment};
     use crate::helpers;
     use crate::note::Note;
     use crate::shelf::{Shelf, ShelfItem};
     use crate::subjects::Subject;
     use crate::templates::TemplateRegistry;
-    use crate::CompilationEnvironment;
     use tempfile;
     use toml;
 
@@ -452,7 +459,7 @@ mod tests {
             .collect();
         assert_eq!(exported_subjects.len(), 3);
 
-        let exported_notes: Vec<Note> = test_notes
+        let exported_notes: Vec<Box<Note>> = test_notes
             .clone()
             .into_iter()
             .filter(|note| note.export((&subject.clone(), &shelf)).is_ok())
@@ -461,17 +468,22 @@ mod tests {
 
                 helpers::fs::write_file(path, test_input.clone(), false).unwrap();
 
-                note
+                Box::new(note)
             })
             .collect();
-        assert_eq!(exported_notes.len(), 5);
+        let mut exported_compilables: Vec<Box<dyn Compilable>> = vec![];
+        for note in exported_notes {
+            exported_compilables.push(note);
+        }
 
-        let mut compilation_env = CompilationEnvironment::new(subject);
+        assert_eq!(exported_compilables.len(), 5);
+
+        let mut compilation_env = CompilationEnvironment::new(subject.path_in_shelf(&shelf));
         compilation_env
             .command(profile.compile_note_command())
-            .notes(test_notes)
+            .compilables(exported_compilables)
             .thread_count(4);
-        assert_eq!(compilation_env.compile(&shelf)?.len(), 5);
+        assert_eq!(compilation_env.compile()?.len(), 5);
 
         assert!(Profile::from(profile_tmp_dir).is_ok());
 
