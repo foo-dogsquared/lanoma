@@ -68,7 +68,7 @@ impl Compilable for Note {
 /// This data structure is made for abstracting the compilation process making it as a separate component.
 /// Ideally, this is used for compiling a subject and its notes/master note.
 pub struct CompilationEnvironment {
-    path: PathBuf,
+    pub path: PathBuf,
     compilables: Vec<Box<dyn Compilable>>,
     command: String,
     thread_count: i16,

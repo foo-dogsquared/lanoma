@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fs::{self, DirBuilder};
 use std::io;
 use std::path::{self, PathBuf};
@@ -280,10 +281,7 @@ impl Subject {
         &self,
         shelf: &Shelf,
     ) -> Result<config::SubjectConfig> {
-        let metadata_path = self.metadata_path_in_shelf(&shelf);
-        let metadata = fs::read_to_string(metadata_path).map_err(Error::IoError)?;
-
-        toml::from_str(&metadata).map_err(Error::TomlValueError)
+        config::SubjectConfig::try_from(self.metadata_path_in_shelf(&shelf))
     }
 
     /// Returns a vector of the parts of the subject.

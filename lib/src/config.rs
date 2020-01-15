@@ -14,7 +14,7 @@ const DEFAULT_CMD: &str = "pdflatex {{note}}";
 const DEFAULT_NAME: &str = "New Student";
 
 /// The configuration of a subject.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SubjectConfig {
     #[serde(rename = "_files", default = "default_files")]
     pub files: Vec<String>,

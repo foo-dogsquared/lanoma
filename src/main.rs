@@ -106,10 +106,6 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                                 &object,
                             )
                             .map_err(Error::HandlebarsRenderError)?;
-                        println!(
-                            "Object:\n{:?}\n\nTemplate:\n{:?}",
-                            &object, &template_string
-                        );
 
                         if helpers::write_file(
                             note.path_in_shelf((&subject, &shelf)),
@@ -199,9 +195,10 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
 
                     for subject in subjects.iter() {
                         let subject = Subject::from_shelf(&subject, &shelf)?;
-                        let subject_config = subject.get_config(&shelf)?;
+                        let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
                         let file_filter = files.as_ref().unwrap_or(&subject_config.files);
 
+                        println!("{:?}", &subject_config);
                         let notes = subject.get_notes_in_fs(&file_filter, &shelf)?;
                         let mut compilables: Vec<Box<dyn Compilable>> = vec![];
                         for note in notes {
@@ -220,23 +217,27 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                 }
             };
 
-            for comp_env in compiled_notes_envs {
+            compiled_notes_envs.into_par_iter()
+            .map(|comp_env| {
+                let path = comp_env.path.clone();
                 let compiled_notes = match comp_env.compile() {
                     Ok(v) => v,
-                    Err(_e) => continue,
+                    Err(_e) => return,
                 };
 
                 if compiled_notes.len() == 0 {
-                    println!("No notes successfully ran the compile command under the subject. Please check for the command if it's valid or the note exists in the filesystem.")
+                    println!("No notes successfully ran the compile command under the path {:?}.", path) ;
+                    println!("Please check for the command if it's valid or the note exists in the filesystem.");
                 } else {
                     println!(
-                        "Here are the compiled note that successfully run the compile command:"
+                        "Here are the compiled note that successfully run the compile command in path {:?}:", path
                     );
                     for compiled_note in compiled_notes {
                         println!("  - {}", compiled_note.name());
                     }
                 }
-            }
+            })
+            .collect::<()>();
         }
         Command::Master {
             subjects,
