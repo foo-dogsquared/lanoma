@@ -195,7 +195,8 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
 
                     for subject in subjects.iter() {
                         let subject = Subject::from_shelf(&subject, &shelf)?;
-                        let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
+                        let subject_config =
+                            subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
                         let file_filter = files.as_ref().unwrap_or(&subject_config.files);
 
                         println!("{:?}", &subject_config);
