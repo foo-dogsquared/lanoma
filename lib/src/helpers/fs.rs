@@ -1,4 +1,5 @@
-use std::fs::{self, DirBuilder};
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::Write;
 use std::os;
 use std::path::{self, Component, Path, PathBuf};
 
@@ -192,7 +193,33 @@ pub fn naively_normalize_path<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
     }
 }
 
-pub fn is_parent_dir(component: Component) -> bool {
+/// A generic function for writing a shelf item (as a file).
+pub fn write_file<P, S>(
+    path: P,
+    string: S,
+    strict: bool,
+) -> Result<(), Error>
+where
+    P: AsRef<Path>,
+    S: AsRef<str>,
+{
+    let path = path.as_ref();
+    let mut file_open_options = OpenOptions::new();
+    file_open_options.write(true).create(true);
+
+    if strict {
+        file_open_options.create_new(true);
+    } else {
+        file_open_options.truncate(true);
+    }
+
+    let mut file = file_open_options.open(path).map_err(Error::IoError)?;
+    file.write(string.as_ref().as_bytes())
+        .map_err(Error::IoError)?;
+    Ok(())
+}
+
+fn is_parent_dir(component: Component) -> bool {
     match component {
         Component::ParentDir => true,
         _ => false,
@@ -202,7 +229,7 @@ pub fn is_parent_dir(component: Component) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     #[test]
     fn relpath_to_common_relpaths() {
@@ -226,6 +253,38 @@ mod tests {
         let dst = PathBuf::from("./tests/texture-notes-profile/common");
 
         assert_eq!(relative_path_from(dst, base), Some("".into()));
+    }
+
+    #[test]
+    fn relpath_with_dst_parent_dir() {
+        let base = PathBuf::from("./");
+        let dst = PathBuf::from("../rust");
+
+        assert_eq!(relative_path_from(dst, base), Some("../rust".into()));
+    }
+
+    #[test]
+    fn relpath_with_base_parent_dir() {
+        let base = PathBuf::from("../rust");
+        let dst = PathBuf::from("./");
+
+        assert_eq!(relative_path_from(dst, base), None);
+    }
+
+    #[test]
+    fn relpath_with_common_parent_dir() {
+        let base = PathBuf::from("../rust/");
+        let dst = PathBuf::from("../rust/././bin");
+
+        assert_eq!(relative_path_from(dst, base), Some("bin".into()));
+    }
+
+    #[test]
+    fn relpath_with_common_parent_dirs() {
+        let base = PathBuf::from("../rust/../../../");
+        let dst = PathBuf::from("../rust");
+
+        assert_eq!(relative_path_from(dst, base), Some("../../..".into()));
     }
 
     #[cfg(unix)]

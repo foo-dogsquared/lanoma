@@ -59,6 +59,15 @@ I've also met people online that are more content with a simple list of director
 
 
 
+== Reason this program exists 
+
+* It is a learning project with the https://www.rust-lang.org/[Rust language]. 
+
+* Create an executable that can be easily be sent to others without the hassle of setting up whatsoever. 
+
+
+
+
 == Installation 
 
 You can simply download the https://github.com/foo-dogsquared/texture-notes-v2/releases[provided binaries in the releases page]. 
@@ -150,12 +159,16 @@ Though it is just a side project, contributions are welcome with open arms:  ref
 To set up for development, you just need https://www.rust-lang.org/[Rust] installed. 
 If you haven't installed it yet, https://www.rust-lang.org/tools/install[be sure to follow the instructions from the official website]. 
 
+The project has the executable and the library code separated into https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html[workspaces]. 
+The main code is the executable. 
+The library is located on the `lib/` folder. 
+
 The project uses https://github.com/rust-lang/cargo[Cargo] for managing the project. 
 
 * To run the binary of the project, execute `cargo run` in the shell. 
 To add command line arguments, just append two dashes (`--`) after the run command. 
 
-* To run the tests of the library crate, call `cargo test`. 
+* To run the tests of the library crate, call `cargo test --package texture-notes-lib --lib`. 
 
 * Using the https://github.com/rust-lang/rls[RLS] plugin of your text editor of choice is recommended. 
 If you're using https://code.visualstudio.com/[Visual Studio Code], it is fully recommended to have it installed. 

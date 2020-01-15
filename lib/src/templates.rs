@@ -1,4 +1,10 @@
+//! An adapter for a template engine.
+//! This is implemented in case Texture Notes decides to support multiple template engine.
+//!
+//! (On the other hand, this may be just a case of overengineering.)
+
 use std::fs;
+use std::ops::Deref;
 use std::path::Path;
 
 use globwalk;
@@ -98,6 +104,20 @@ impl TemplateRegistry for TemplateHandlebarsRegistry {
     }
 }
 
+impl Deref for TemplateHandlebarsRegistry {
+    type Target = handlebars::Handlebars;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsMut<handlebars::Handlebars> for TemplateHandlebarsRegistry {
+    fn as_mut(&mut self) -> &mut handlebars::Handlebars {
+        &mut self.0
+    }
+}
+
 impl TemplateHandlebarsRegistry {
     /// Creates a new instance of the registry.
     pub fn new() -> Self {
@@ -149,8 +169,7 @@ impl TemplateHandlebarsRegistry {
     }
 }
 
-/// A template is a Handlebars string to be rendered.
-/// This is specifically use in creating notes and other files that may need templating.
+/// A generic struct for templates to be used in a template engine.
 pub struct Template {
     name: String,
     s: String,
@@ -241,7 +260,7 @@ mod tests {
                 .map_err(Error::IoError)?;
         }
 
-        let template_files = TemplateGetter::get_templates(tmp_dir.path(), "*.tex")?;
+        let template_files = TemplateGetter::get_templates(tmp_dir.path(), "tex")?;
 
         assert_eq!(template_files.len(), 3);
 

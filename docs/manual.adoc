@@ -3,8 +3,9 @@ Gabriel Arazas
 2019-12-31
 :toc:
 :doctype: manpage
-:manmanual: Texture Notes Manual
-:mansource: Texture Notes v2.0.0
+:program: Texture Notes
+:manmanual: {program} Manual
+:mansource: {program} v2.0.0
 :man-linkstyle: pass:[red R < >]
 
 :default-template-name: _default
@@ -27,7 +28,7 @@ texture-notes - a note manager for LaTeX documents; inspired from Gilles Castel'
 
 == Sypnosis 
 
-*texture-notes* [_GLOBAL OPTIONS_] [_SUBCOMMAND_] [_SUBCOMMAND OPTIONS_] [_SUBCOMMAND ARGUMENT(S)_]
+*texture-notes* [_GLOBAL OPTIONS_] [_SUBCOMMAND_]... [_SUBCOMMAND OPTIONS_] [_SUBCOMMAND ARGUMENT(S)_]...
 
 
 
@@ -149,6 +150,9 @@ For certain cases, this can be distinct when creating notes or the subject.
 The same applies for referring to notes. 
 As long as the resulting kebab-case is the same, it refers to the same note in the filesystem. 
 
+That said, with this implementation, Texture Notes will not recognize notes (and subjects) in the filesystem that are not in valid kebab-case. 
+You can exploit this to make certain notes and subjects hidden simply by adding and renaming the file with an invalid kebab-case character (e.g., an underscore (`_`), an exclamation point (`!`), dot (`.`)). 
+
 
 === Note templates 
 
@@ -169,9 +173,9 @@ The `{default-template-name}` template has the following value.
 \documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
 
 % document metadata
-\author{ {{~name~}} }
+\author{ {{~profile.name~}} }
 \title{ {{~note.title~}} }
-\date{ {{~date~}} }
+\date{ {{~reldate~}} }
 
 \begin{document}
 Sample content.
@@ -181,6 +185,8 @@ Sample content.
 ----
 
 To override the default template, just create `{default-template-name}.{template-file-ext}` on the templates folder. 
+The Handlebars configuration within the Texture Notes also comes with a few helper functions for convenience. 
+Check out the <<Templating>> section in the appendix for more details. 
 
 As previously said, Texture Notes uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
 To set dynamic values, a Handlebars expression delimited by two pairs of curly braces (`{{$EXPR}}`). 
@@ -200,25 +206,24 @@ The following TOML table is then formed in the note creation process.
 
 [source, toml]
 ----
+[profile]
 name = "STUDENT_NAME"
 version = "VERSION"
-_date = "2019-01-06"
-
 # The rest of the keys in `profile.toml`. 
 # ...
 
+[shelf]
+path = "##FULL PATH TO THE SHELF##"
+
 [note]
 title = "Introduction to limits"
-_file = "introduction-to-limits.tex"
-# ...
-_relpath_from_shelf = "introduction-to-limits.tex"
+file = "introduction-to-limits.tex"
+path_in_shelf = "##FULL PATH TO THE FILE##"
 
 [subject]
 name = "Calculus I"
-_file = "calculus"
-# ...
-_relpath_from_shelf = ""
-# The rest of the keys in `info.toml` of the subject.
+_path_in_shelf = "##FULL PATH TO THE SUBJECT FOLDER##"
+# The rest of the keys in `info.toml` of the subject if there's any. 
 ----
 
 This is where setting custom keys can be handy. 
@@ -280,51 +285,26 @@ For future references, the default master template has the following content.
 \documentclass[class=memoir, crop=false, oneside, 12pt]{standalone}
 
 % document metadata
-\author{ {{~name~}} }
+\author{ {{~profile.name~}} }
 \title{ {{~subject.name~}} }
-\date{ {{~_date~}} }
+\date{ {{~reldate~}} }
 
 \begin{document}
 % Frontmatter of the class note
 
-{{#each _master.notes}}
-\include{ {{~this._slug}}.tex}
+{{#each master.notes}}
+Note: {{this.name}} {{this.path_in_shelf}}
 {{/each }}
 
 \end{document}
 ----
 
-To know more about the TOML object of the master note, please refer to the <<Built-in TOML>> section. 
+To know more about the TOML object of the master note, please refer to the <<Built-in object data>> section. 
 
 To override the default, create a file named `{master-default-template}.{template-file-ext}` in the templates folder of the profile. 
 
 This also immediately compiles the master note. 
 To skip the compilation step, simply provide the skip compilation flag (`-s`/`--skip-compilation`). 
-
-
-
-
-== Metadata keys reference 
-
-A reference of the keys Texture Notes officially recognizes. 
-
-*`{profile-metadata-file}`*:: 
-
-* `name` - The name of the profile. 
-This field is required. 
-* `version`- The version of the profile. 
-This field is required. 
-This key may or may not have expanded upon future versions. 
-* `command` - The compilation command for the notes. 
-If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
-
-*`{subject-metadata-file}`*::
-
-* `name` - The name of the subject. 
-Mainly used for creating the note template. 
-* `_files` - An array of globs pointing to a note. 
-This is mainly used as a filter for retrieving all notes of the specified subject. 
-The default value is `["*.tex"]`. 
 
 
 
@@ -352,16 +332,51 @@ https://github.com/foo-dogsquared/texture-notes-v2/issues
 
 
 [appendix]
-== Built-in TOML 
+== Config reference 
 
-Most component (i.e., subjects, notes) in Texture Notes has a resulting TOML associated with it. 
+A reference of the keys Texture Notes officially recognizes. 
+
+*`{profile-metadata-file}`*:: 
+
+* `name` - The name of the profile. 
+This field is required. 
+* `version`- The version of the profile. 
+This field is required. 
+This key may or may not have expanded upon future versions. 
+* `command` - A Handlebars string for the compilation command of the notes. 
+The command is assumed to be executed on the folder of the subject. 
+If this key is absent in the file, it uses `pdflatex {{note}}`. 
+
+*`{subject-metadata-file}`*::
+
+* `name` - The name of the subject. 
+Mainly used for creating the note template. 
+* `_files` - An array of globs pointing to a note. 
+This is mainly used as a filter for retrieving all notes of the specified subject. 
+The default value is `["*.tex"]`. 
+* `command` - A Handlebars string for the compilation command of the notes. 
+The command is assumed to be executed on the folder of the subject. 
+If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
+
+
+
+
+[appendix]
+== Built-in object data 
+
+Most component (i.e., subjects, notes) in Texture Notes has a resulting object data associated with it. 
 This is mostly used for creating notes (and master notes). 
 
 
-=== Profile object (TOML) 
+=== Profile object 
 
 For the profile, the TOML is simply the metadata file. 
 The TOML from the profile is often where building the resulting TOML first starts. 
+
+
+=== Shelf object 
+
+The shelf object simply contains the `path` key where it holds the full path of the shelf. 
 
 
 === Subject object 
@@ -375,10 +390,10 @@ It is generally advised not to use the following keys.
 
 * `name` - The name of the subject. 
 If there is `{subject-metadata-file}` with the field, it will use it instead. 
-* `_slug` - The resulting kebab case of the name. 
+* `_full_name` - The full name of the subject including the previous subject components (i.e., `Year 1/Semester 1/Calculus` as the full name while `Calculus` is the name). 
 * `_path` - The path of the subject. 
-* `_relpath_to_shelf` - The resulting relative path from the subject directory to the shelf. 
-* `_relpath_from_shelf` - The resulting relative path from the shelf to the subject directory. 
+* `_path_in_shelf` - The path of the subject relative to the shelf. 
+(Take note of the prepended underscore.)
 
 
 === Note object 
@@ -386,12 +401,9 @@ If there is `{subject-metadata-file}` with the field, it will use it instead.
 The note also has a resulting TOML with the following keys. 
 
 * `title` - The title of the note. 
-* `_slug` - The resulting title in kebab case. 
-* `_file` - The resulting file name of the note. 
+* `file` - The resulting file name of the note. 
 It is basically the note title in kebab case appended with `.tex`. 
-* `_path` - The resulting path of the note. 
-* `_relpath_to_shelf` - The resulting relative path from the directory of the note to the shelf. 
-* `_relpath_from_shelf` - The resulting relative path from the shelf to the directory of the note. 
+* `path_in_shelf` - The resulting path of the note. 
 
 
 === Master note object 
@@ -402,9 +414,7 @@ The master note is mostly similar to a note TOML data.
 It contains the individual note TOML. 
 * `subject` - The subject of the master note. 
 It contains the subject TOML. 
-* `_path` - The path of the master note. 
-* `_relpath_to_shelf` - The relative path from the directory of the master note to the shelf. 
-* `_relpath_from_shelf` - The inverse of `_relpath_to_shelf`. The relative path from the shelf to the directory of the master note. 
+* `path_in_shelf` - The path of the master note. 
 
 
 === During note creation 
@@ -414,11 +424,13 @@ In creating a note, the following TOML is formed.
 
 [source, toml]
 ----
-name = "NAME"
-version = "VERSION"
-_date = "2020-01-07"
+# The profile object
+[profile]
+# ...
 
-# The rest of the keys in `profile.toml`. 
+# The shelf object
+[shelf]
+# ...
 
 # The subject TOML
 [subject]
@@ -436,18 +448,20 @@ The resulting TOML when creating the master note is similar to the resulting TOM
 
 [source, toml]
 ----
-name = "NAME"
-version = "VERSION"
-_date = "2020-01-07"
+# The profile object
+[profile]
+# ...
 
-# The rest of the keys in `profile.toml`. 
+# The shelf object
+[shelf]
+# ...
 
 # The subject TOML
 [subject]
 # ...
 
 # The master note TOML
-[_master]
+[master]
 # ...
 ----
 
@@ -465,3 +479,242 @@ By default, the profile location uses the config folder of the operating system.
 
 Specifically, Texture Notes utilizes the https://crates.io/crates/directories[`directories` crate from crates.io]. 
 You can refer to the crates.io page for more details. 
+
+
+
+
+[appendix]
+== Templating 
+
+{program} uses a specific https://crates.io/crates/handlebars[Rust implementation of Handlebars] as the templating language. 
+
+
+=== Basic syntax 
+
+This section will tackle the basic syntax of https://handlebarsjs.com/[Handlebars]. 
+For a more reliable reference, you can go to the https://handlebarsjs.com/[official website] and the https://crates.io/crates/handlebars[the crates.io page]. 
+
+To evaluate an expression, simply delimit them with two pairs of curly brackets (`{{`, `}}`). 
+
+[source, handlebars]
+----
+{{ ##OBJECT_REFERENCE## }}
+{{ profile.name }}
+{{ subject.name }}
+----
+
+Functions (or helpers) are also a part of Handlebars. 
+They are simply referred to by their name and the arguments separated by whitespaces. 
+
+[source, handlebars]
+----
+{{FUNCTION arg_1 arg_2 ... }}
+{{reldate "%F %T %Z" 4}}
+{{kebab-case "The quick brown fox jumps over the lazy dog."}}
+----
+
+Block helpers needs a declaring pair similar to HTML container tags. 
+They are identified with a prepended `#` in the helper name and needs a closing mustache (`/`) of the same name. 
+
+[source, handlebars]
+----
+{{#if expr}}
+Hello
+{{/if}}
+----
+
+Comments can be made by delimiting the content in comment blocks (i.e., `{{! ##CONTENT## }}`, `{{!-- ##CONTENT## --}}`). 
+It will not show up in the output. 
+
+Handlebars also make use of raw escaping with the 'triple-stash' (`{{{ }}}`). 
+
+The curly brackets are often used in LaTeX documents. 
+The following Handlebars code will result in a parsing error. 
+
+[source, handlebars]
+----
+{{!-- This will cause an error. --}}
+\title{{{subject.name}} - {{note.title}}}
+----
+
+To get around this, you can utilize https://handlebarsjs.com/guide/expressions.html#whitespace-control[whitespace control]. 
+
+Adding a tilde character (`~`) by the braces will trim the surrounding whitespace of the Handlebars expression on that side. 
+
+[source, handlebars]
+----
+\title{ {{~ subject.name }} - {{note.title ~}} }
+-> \title{Calculus - Introduction to Limits}
+----
+
+Handlebars (rather the implementation library that {program} uses) also support reusing of the templates with partials. 
+This allows to create a skeleton with modular templates (i.e., head, body). 
+
+To import a template, just prepend the name of the template to be imported with `>`. 
+
+[source, handlebars]
+----
+\begin{document}
+{{>TEMPLATE_NAME object_param=.}}
+\end{document}
+----
+
+
+=== Helper functions 
+
+The templating language is only enough to cover the most basic of the common use cases. 
+It is not as extensive as https://gohugo.io/templates/[Hugo templates]. 
+
+Along with the https://docs.rs/handlebars/3.0.0-beta.5/handlebars/#built-in-helpers[built-in helpers], {program} extends the helper list for convenience. 
+As of 2020-01-13, there is no way for the user to add their own helpers. 
+It requires modifying the source code and recompiling {program}. 
+
+Here are the list of the helper functions: 
+
+
+==== Mathematical functions 
+
+The mathematical functions are just simple arithmetic operations. 
+
+* `add` for addition. 
+* `sub` for subtraction. 
+* `mul` for multiplication. 
+* `div` for division. 
+
+These functions are also divided into types: integers and float. 
+The arithmetic helpers accept any number of arguments. 
+
+CAUTION: The functions are strict and does not cast integers into float and vice versa. 
+
+[source, handlebars]
+----
+{{add-int 1 2 3 4 5}}
+{{add-float 1.0 2.0 3.0 4.0 5.0}}
+
+{{sub-int 5 3 2}}
+{{sub-float 1.0 2.0 3.0 4.0 5.0}}
+
+{{! Variables are also accepted. }}
+{{! Assuming subject.id is '5'. }}
+{{add-int subject.id * 10}}
+
+{{! Invalid types are discarded. }}
+{{! The expression below will result in '5'. }}
+{{add-int subject.id * 10.0}}
+----
+
+Any invalid argument (e.g., floating numbers in an integer addition) is discarded and replaced with the https://en.wikipedia.org/wiki/Identity_element[identity element] of the operation. 
+
+
+==== Case conversion functions 
+
+There are multiple string case conversion helpers for converting a string: 
+
+NOTE: The letter case helpers (besides the uppercase and lowercase function) is implemented using the https://docs.rs/heck/0.3.1/heck/[heck] library. 
+It drops the punctuation and does not feature smart casing. 
+
+* `upper-case` - Convert a string into upper case. 
+* `lower-case` - Convert a string into lower case. 
+* `kebab-case` - Convert a string into kebab case where all words are in lowercase, punctuations and whitespace are stripped, and joined with a hyphen (`-`). 
+* `snake-case` - Convert a string into snake case where all words are in lowercase, punctuations and whitespace are removed, and are joined with an underscore (`_`). 
+* `camel-case` - Convert a string into camel case where all whitespace is trimmed and the words are capitalized. 
+* `title-case` - Convert a string into title case where all words are capitalized. 
+
+Overall, the argument for the function should be the same. 
+All of them needs only one string. 
+
+[source, handlebars]
+----
+{{CASE_FN STRING}}
+
+{{upper-case "The quick brown fox jumps over the lazy dog."}} 
+-> "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG."
+
+{{lower-case "The quick brown fox jumps over the lazy dog."}} 
+-> "the quick brown fox jumps over the lazy dog."
+
+{{kebab-case "The quick brown fox jumps over the lazy dog."}} 
+-> "the-quick-brown-fox-jumps-over-the-lazy-dog"
+
+{{snake-case "The quick brown fox jumps over the lazy dog."}} 
+-> "the_quick_brown_fox_jumps_over_the_lazy_dog"
+
+{{camel-case "The quick brown fox jumps over the lazy dog."}} 
+-> "TheQuickBrownFoxJumpsOverTheLazyDog"
+
+{{title-case "The quick brown fox jumps over the lazy dog."}} 
+-> "The Quick Brown Fox Jumps Over The Lazy Dog"
+----
+
+
+==== reldate
+
+Generates a string with the relative datetime from today. 
+It accepts two parameters: the format of the date and the number of days relative to today. 
+
+[source, handlebars]
+----
+{{reldate STRING_FORMAT NUMBER_OF_DAYS}}
+----
+
+For more information in the date syntax, refer to the https://docs.rs/chrono/0.4.10/chrono/format/strftime/index.html[`chrono::format::strftime` module that {program} uses for detecting the datetime]. 
+
+By default, `reldate` formats today's datetime with `%F`. 
+
+[source, handlebars]
+----
+{{! Assuming this is executed on 2020-01-12 }}
+
+{{reldate}} 
+-> 2020-01-12
+
+{{reldate "%F %T" 3}} 
+-> 2020-01-12 23:04:58
+
+{{reldate "%Y-%B-%D" -12}} 
+-> 2019-December-12/31/19
+
+{{reldate "%T %Y %B" 1024}} 
+-> 23:35:14 2022 November
+----
+
+
+==== relpath
+
+Outputs the relative path from the destination path to the base path. 
+Similar to https://docs.python.org/3/library/os.path.html#os.path.relpath[Python `os.path.relpath`], this is done only with path computation. 
+The filesystem is not accessed in any way. 
+
+[source, handlebars]
+----
+{{relpath DESTINATION_PATH BASE_PATH}}
+----
+
+If an invalid input is detected, it will be replaced with an empty string (`""`). 
+If the output is invalid, it will return an empty string. 
+
+[source, handlebars]
+----
+{{! Assuming this is executed on 2020-01-12 }}
+
+{{relpath "university/year-1/semester-1" "university/year-2/semester-2"}} 
+-> ../../year-1/semester-1
+
+{{relpath "." "university/year-1"}} 
+-> ../../.
+
+{{relpath "university/year-1" "."}} 
+-> university/year-1
+
+{{relpath ".." "university/year-1"}} 
+-> ../../..
+
+{{relpath "university/year-1" "university"}} 
+-> year-1
+
+{{relpath "../university/year-1" ".."}} 
+-> university/year-1
+
+{{relpath "/dev/sda1 /dev/sda6"}} 
+-> ../sda1
+----
