@@ -293,13 +293,13 @@ For future references, the default master template has the following content.
 % Frontmatter of the class note
 
 {{#each master.notes}}
-Note: {{this.name}} {{this._path_in_shelf}}
+Note: {{this.name}} {{this.path_in_shelf}}
 {{/each }}
 
 \end{document}
 ----
 
-To know more about the TOML object of the master note, please refer to the <<Built-in TOML>> section. 
+To know more about the TOML object of the master note, please refer to the <<Built-in object data>> section. 
 
 To override the default, create a file named `{master-default-template}.{template-file-ext}` in the templates folder of the profile. 
 
@@ -344,6 +344,7 @@ This field is required.
 This field is required. 
 This key may or may not have expanded upon future versions. 
 * `command` - A Handlebars string for the compilation command of the notes. 
+The command is assumed to be executed on the folder of the subject. 
 If this key is absent in the file, it uses `pdflatex {{note}}`. 
 
 *`{subject-metadata-file}`*::
@@ -354,6 +355,7 @@ Mainly used for creating the note template.
 This is mainly used as a filter for retrieving all notes of the specified subject. 
 The default value is `["*.tex"]`. 
 * `command` - A Handlebars string for the compilation command of the notes. 
+The command is assumed to be executed on the folder of the subject. 
 If this key is absent in the file, it uses `latexmk -pdf {{note}}`. 
 
 
@@ -388,7 +390,9 @@ It is generally advised not to use the following keys.
 
 * `name` - The name of the subject. 
 If there is `{subject-metadata-file}` with the field, it will use it instead. 
-* `_path_in_shelf` - The path of the subject. 
+* `_full_name` - The full name of the subject including the previous subject components (i.e., `Year 1/Semester 1/Calculus` as the full name while `Calculus` is the name). 
+* `_path` - The path of the subject. 
+* `_path_in_shelf` - The path of the subject relative to the shelf. 
 (Take note of the prepended underscore.)
 
 
@@ -559,7 +563,7 @@ To import a template, just prepend the name of the template to be imported with 
 === Helper functions 
 
 The templating language is only enough to cover the most basic of the common use cases. 
-It is not as extensive as https://golang.org/pkg/text/template/[Go templates] (or https://gohugo.io/templates/[Hugo templates]). 
+It is not as extensive as https://gohugo.io/templates/[Hugo templates]. 
 
 Along with the https://docs.rs/handlebars/3.0.0-beta.5/handlebars/#built-in-helpers[built-in helpers], {program} extends the helper list for convenience. 
 As of 2020-01-13, there is no way for the user to add their own helpers. 
@@ -568,9 +572,46 @@ It requires modifying the source code and recompiling {program}.
 Here are the list of the helper functions: 
 
 
+==== Mathematical functions 
+
+The mathematical functions are just simple arithmetic operations. 
+
+* `add` for addition. 
+* `sub` for subtraction. 
+* `mul` for multiplication. 
+* `div` for division. 
+
+These functions are also divided into types: integers and float. 
+The arithmetic helpers accept any number of arguments. 
+
+CAUTION: The functions are strict and does not cast integers into float and vice versa. 
+
+[source, handlebars]
+----
+{{add-int 1 2 3 4 5}}
+{{add-float 1.0 2.0 3.0 4.0 5.0}}
+
+{{sub-int 5 3 2}}
+{{sub-float 1.0 2.0 3.0 4.0 5.0}}
+
+{{! Variables are also accepted. }}
+{{! Assuming subject.id is '5'. }}
+{{add-int subject.id * 10}}
+
+{{! Invalid types are discarded. }}
+{{! The expression below will result in '5'. }}
+{{add-int subject.id * 10.0}}
+----
+
+Any invalid argument (e.g., floating numbers in an integer addition) is discarded and replaced with the https://en.wikipedia.org/wiki/Identity_element[identity element] of the operation. 
+
+
 ==== Case conversion functions 
 
 There are multiple string case conversion helpers for converting a string: 
+
+NOTE: The letter case helpers (besides the uppercase and lowercase function) is implemented using the https://docs.rs/heck/0.3.1/heck/[heck] library. 
+It drops the punctuation and does not feature smart casing. 
 
 * `upper-case` - Convert a string into upper case. 
 * `lower-case` - Convert a string into lower case. 
@@ -650,7 +691,7 @@ The filesystem is not accessed in any way.
 ----
 
 If an invalid input is detected, it will be replaced with an empty string (`""`). 
-If the output is invalid (e.g., finding the relative path from an absolute to a relative path), it will return an empty string. 
+If the output is invalid, it will return an empty string. 
 
 [source, handlebars]
 ----
@@ -673,4 +714,7 @@ If the output is invalid (e.g., finding the relative path from an absolute to a 
 
 {{relpath "../university/year-1" ".."}} 
 -> university/year-1
+
+{{relpath "/dev/sda1 /dev/sda6"}} 
+-> ../sda1
 ----
