@@ -135,12 +135,14 @@ impl Subject {
         S: AsRef<str>,
     {
         let name = name.as_ref();
-        let path: PathBuf = helpers::fs::naively_normalize_path(name.to_string())
-            .unwrap()
-            .components()
-            .into_iter()
-            .map(|component| component.as_os_str().to_str().unwrap().trim().to_string())
-            .collect();
+        let path: PathBuf = match helpers::fs::naively_normalize_path(name.to_string()) {
+            Some(v) => v
+                .components()
+                .into_iter()
+                .map(|component| component.as_os_str().to_str().unwrap().trim().to_string())
+                .collect(),
+            None => PathBuf::from(""),
+        };
         Self {
             name: path.to_str().unwrap().to_string(),
         }
@@ -305,7 +307,8 @@ impl Subject {
     pub fn split_subjects(&self) -> Vec<Self> {
         let path = PathBuf::from(&self.name);
         path.ancestors()
-            .map(|ancestor| Self::new(ancestor.to_str().unwrap()))
+            .map(|ancestor| Self::new(ancestor.to_string_lossy()))
+            .filter(|subject| !subject.full_name().is_empty())
             .collect()
     }
 
@@ -371,11 +374,11 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Mathematics").name
+            Subject::new("Mathematics/Calculus").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Mathematics/Calculus").name
+            Subject::new("Mathematics").name
         );
     }
 
@@ -390,11 +393,11 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Calculus").name
+            Subject::new("Calculus/Calculus I").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Calculus/Calculus I").name
+            Subject::new("Calculus").name
         );
     }
 
@@ -409,11 +412,11 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Bachelor I").name
+            Subject::new("Bachelor I/Semester I").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Bachelor I/Semester I").name
+            Subject::new("Bachelor I").name
         );
     }
 
@@ -428,7 +431,7 @@ mod tests {
         let mut subject_part = subject_fragments.iter();
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Bachelor I/").name
+            Subject::new("Bachelor I/Semester I/.Logs").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
@@ -436,7 +439,7 @@ mod tests {
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("Bachelor I/Semester I/.Logs").name
+            Subject::new("Bachelor I/").name
         );
     }
 
@@ -453,14 +456,9 @@ mod tests {
         let subjects = subject.split_subjects();
         let mut subject_part = subjects.iter();
 
-        assert_eq!(subject_part.next().unwrap().name, Subject::new("..").name);
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("../University").name
-        );
-        assert_eq!(
-            subject_part.next().unwrap().name,
-            Subject::new("../University/Year 1").name
+            Subject::new("../University/Year 1/Semester 1/Computer Engineering").name
         );
         assert_eq!(
             subject_part.next().unwrap().name,
@@ -468,8 +466,13 @@ mod tests {
         );
         assert_eq!(
             subject_part.next().unwrap().name,
-            Subject::new("../University/Year 1/Semester 1/Computer Engineering").name
+            Subject::new("../University/Year 1").name
         );
+        assert_eq!(
+            subject_part.next().unwrap().name,
+            Subject::new("../University").name
+        );
+        assert_eq!(subject_part.next().unwrap().name, Subject::new("..").name);
         assert!(subject_part.next().is_none());
     }
 
