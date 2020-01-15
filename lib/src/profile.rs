@@ -1,8 +1,8 @@
-//! A profile is an object that holds all of the required information for the operations in Texture Notes. 
-//! For now, a profile contains the metadata and the templates. 
-//! 
-//! On the filesystem, it is represented as a folder with specific files and folders. 
-//! The required component in the filesystem is the profile metadata. 
+//! A profile is an object that holds all of the required information for the operations in Texture Notes.
+//! For now, a profile contains the metadata and the templates.
+//!
+//! On the filesystem, it is represented as a folder with specific files and folders.
+//! The required component in the filesystem is the profile metadata.
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -10,15 +10,12 @@ use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use chrono;
-use handlebars;
-use heck::{CamelCase, KebabCase, SnakeCase, TitleCase};
 use toml::{self, Value};
 
 use crate::config::ProfileConfig;
 use crate::consts;
 use crate::error::Error;
-use crate::helpers;
+use crate::helpers::{self, handlebars as handlebars_helpers};
 use crate::templates::{self, TemplateGetter};
 use crate::Object;
 
@@ -29,46 +26,6 @@ pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = ".templates";
 pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";
 pub const PROFILE_MASTER_NOTE_TEMPLATE_NAME: &str = "master/_default";
-
-// Define all of the Handlebars helper functions.
-handlebars::handlebars_helper!(kebab_case: |s: str| s.to_kebab_case());
-handlebars::handlebars_helper!(snake_case: |s: str| s.to_snake_case());
-handlebars::handlebars_helper!(title_case: |s: str| s.to_title_case());
-handlebars::handlebars_helper!(camel_case: |s: str| s.to_camel_case());
-handlebars::handlebars_helper!(upper_case: |s: str| s.to_uppercase());
-handlebars::handlebars_helper!(lower_case: |s: str| s.to_lowercase());
-fn relpath(
-    h: &handlebars::Helper,
-    _: &handlebars::Handlebars,
-    _: &handlebars::Context,
-    _rc: &mut handlebars::RenderContext,
-    out: &mut dyn handlebars::Output,
-) -> handlebars::HelperResult {
-    let dst = PathBuf::from(h.param(0).and_then(|v| v.value().as_str()).unwrap_or(""));
-    let base = PathBuf::from(h.param(1).and_then(|v| v.value().as_str()).unwrap_or(""));
-    let result = helpers::fs::relative_path_from(dst, base).unwrap_or(PathBuf::new());
-
-    out.write(result.to_str().unwrap_or(""))?;
-    Ok(())
-}
-
-fn reldate(
-    h: &handlebars::Helper,
-    _: &handlebars::Handlebars,
-    _: &handlebars::Context,
-    rc: &mut handlebars::RenderContext,
-    out: &mut dyn handlebars::Output,
-) -> handlebars::HelperResult {
-    let format = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("%F");
-    let relative_days = h.param(1).and_then(|v| v.value().as_i64()).unwrap_or(0);
-    let now = chrono::Local::now();
-    let days = chrono::Duration::days(relative_days);
-
-    let datetime_delta = now + days;
-
-    out.write(datetime_delta.format(format).to_string().as_ref())?;
-    Ok(())
-}
 
 /// A builder for constructing the profile.
 /// Setting the values does not consume the builder for dynamic setting.
@@ -237,14 +194,30 @@ impl Profile {
 
         // Registering some helper functions in the Handlebars registry.
         let registry_as_mut = registry.as_mut();
-        registry_as_mut.register_helper("upper-case", Box::new(upper_case));
-        registry_as_mut.register_helper("lower-case", Box::new(lower_case));
-        registry_as_mut.register_helper("kebab-case", Box::new(kebab_case));
-        registry_as_mut.register_helper("snake-case", Box::new(snake_case));
-        registry_as_mut.register_helper("camel-case", Box::new(camel_case));
-        registry_as_mut.register_helper("title-case", Box::new(title_case));
-        registry_as_mut.register_helper("reldate", Box::new(reldate));
-        registry_as_mut.register_helper("relpath", Box::new(relpath));
+        // Mathematical functions.
+        registry_as_mut.register_helper("add-float", Box::new(handlebars_helpers::add_float));
+        registry_as_mut.register_helper("add-int", Box::new(handlebars_helpers::add_int));
+        registry_as_mut.register_helper("sub-float", Box::new(handlebars_helpers::sub_float));
+        registry_as_mut.register_helper("sub-int", Box::new(handlebars_helpers::sub_int));
+        registry_as_mut.register_helper("div-int", Box::new(handlebars_helpers::div_int));
+        registry_as_mut.register_helper("div-float", Box::new(handlebars_helpers::div_float));
+        registry_as_mut.register_helper("div-int", Box::new(handlebars_helpers::div_int));
+        registry_as_mut.register_helper("mul-int", Box::new(handlebars_helpers::mult_int));
+        registry_as_mut.register_helper("mul-float", Box::new(handlebars_helpers::mult_float));
+
+        // Letter case functions.
+        registry_as_mut.register_helper("upper-case", Box::new(handlebars_helpers::upper_case));
+        registry_as_mut.register_helper("lower-case", Box::new(handlebars_helpers::lower_case));
+        registry_as_mut.register_helper("kebab-case", Box::new(handlebars_helpers::kebab_case));
+        registry_as_mut.register_helper("snake-case", Box::new(handlebars_helpers::snake_case));
+        registry_as_mut.register_helper("camel-case", Box::new(handlebars_helpers::camel_case));
+        registry_as_mut.register_helper("title-case", Box::new(handlebars_helpers::title_case));
+
+        // Miscellaneous helpers.
+        registry_as_mut.register_helper("is-file", Box::new(handlebars_helpers::is_file));
+        registry_as_mut.register_helper("is-dir", Box::new(handlebars_helpers::is_dir));
+        registry_as_mut.register_helper("reldate", Box::new(handlebars_helpers::reldate));
+        registry_as_mut.register_helper("relpath", Box::new(handlebars_helpers::relpath));
 
         self.templates = registry;
 
@@ -352,7 +325,6 @@ impl Profile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compile::{Compilable, CompilationEnvironment};
     use crate::helpers;
     use crate::note::Note;
     use crate::shelf::{Shelf, ShelfItem};
@@ -411,79 +383,6 @@ mod tests {
             .filter(|note| note.export((&subject.clone(), &shelf)).is_ok())
             .collect();
         assert_eq!(exported_notes.len(), 5);
-
-        assert!(Profile::from(profile_tmp_dir).is_ok());
-
-        Ok(())
-    }
-
-    #[ignore]
-    #[test]
-    fn basic_profile_usage_with_compilation_notes() -> Result<(), Error> {
-        let (profile_tmp_dir, mut profile) = tmp_profile()?;
-        let (_, mut shelf) = tmp_shelf()?;
-
-        assert!(profile.export().is_ok());
-        assert!(shelf.export().is_ok());
-
-        let test_subjects =
-            Subject::from_vec_loose(&vec!["Calculus", "Algebra", "Physics"], &shelf);
-
-        let subject = test_subjects[0].clone();
-        let test_notes = Note::from_vec_loose(
-            &vec![
-                "Introduction to Precalculus",
-                "Introduction to Integrations",
-                "Taylor Series",
-                "Introduction to Limits",
-                "Matrices and Markov Chains",
-            ],
-            &subject,
-            &shelf,
-        );
-        let test_input = r"\documentclass[class=memoir, crop=false, oneside, 14pt]{standalone}
-
-        % document metadata
-        \author{ {{~author~}} }
-        \title{ {{~title~}} }
-        \date{ {{~date~}} }
-
-        \begin{document}
-        This is a content sample.
-        \end{document}
-        ";
-
-        let exported_subjects: Vec<Subject> = test_subjects
-            .into_iter()
-            .filter(|subject| subject.export(&shelf).is_ok())
-            .collect();
-        assert_eq!(exported_subjects.len(), 3);
-
-        let exported_notes: Vec<Box<Note>> = test_notes
-            .clone()
-            .into_iter()
-            .filter(|note| note.export((&subject.clone(), &shelf)).is_ok())
-            .map(|note| {
-                let path = note.path_in_shelf((&subject.clone(), &shelf));
-
-                helpers::fs::write_file(path, test_input.clone(), false).unwrap();
-
-                Box::new(note)
-            })
-            .collect();
-        let mut exported_compilables: Vec<Box<dyn Compilable>> = vec![];
-        for note in exported_notes {
-            exported_compilables.push(note);
-        }
-
-        assert_eq!(exported_compilables.len(), 5);
-
-        let mut compilation_env = CompilationEnvironment::new(subject.path_in_shelf(&shelf));
-        compilation_env
-            .command(profile.compile_note_command())
-            .compilables(exported_compilables)
-            .thread_count(4);
-        assert_eq!(compilation_env.compile()?.len(), 5);
 
         assert!(Profile::from(profile_tmp_dir).is_ok());
 

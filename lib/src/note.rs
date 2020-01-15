@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 use chrono::{self};
 use heck::KebabCase;
@@ -207,4 +207,3 @@ impl Note {
         slug
     }
 }
-

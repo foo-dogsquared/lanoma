@@ -6,14 +6,15 @@ use std::process;
 
 use toml;
 
-use texture_notes_lib::profile::Profile;
-use texture_notes_lib::shelf::{Shelf, ShelfData};
+use texture_notes_lib::error::Error;
 use texture_notes_lib::masternote::MasterNote;
 use texture_notes_lib::note::Note;
+use texture_notes_lib::profile::Profile;
+use texture_notes_lib::shelf::{Shelf, ShelfData};
 use texture_notes_lib::subjects::Subject;
 use texture_notes_lib::Object;
-use texture_notes_lib::error::Error;
-#[macro_use] use texture_notes_lib::{modify_toml_table, upsert_toml_table};
+#[macro_use]
+use texture_notes_lib::{modify_toml_table, upsert_toml_table};
 
 pub fn master_note_full_object(
     profile: &Profile,

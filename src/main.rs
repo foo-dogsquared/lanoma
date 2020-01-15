@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::path;
 use std::process;
 
 use directories;
@@ -18,8 +17,8 @@ use texture_notes_lib::subjects::Subject;
 
 // the modules from this crate
 mod args;
-mod helpers;
 mod compile;
+mod helpers;
 
 use crate::args::{Command, Input, TextureNotes};
 use crate::compile::{Compilable, CompilationEnvironment};

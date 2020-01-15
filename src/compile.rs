@@ -4,11 +4,11 @@ use std::process;
 use std::str::FromStr;
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use toml;
 use texture_notes_lib::error::Error;
 use texture_notes_lib::masternote::MasterNote;
 use texture_notes_lib::note::Note;
 use texture_notes_lib::HANDLEBARS_REG;
+use toml;
 
 use crate::helpers;
 
