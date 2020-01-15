@@ -299,9 +299,9 @@ impl Subject {
     /// let subjects = subject.split_subjects();
     /// let mut split_subjects = subjects.iter();
     ///
-    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I").name());
-    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I/Semester I").name());
     /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I/Semester I/Calculus").name());
+    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I/Semester I").name());
+    /// assert_eq!(split_subjects.next().unwrap().name(), Subject::new("Bachelor I").name());
     /// assert!(split_subjects.next().is_none());
     /// ```
     pub fn split_subjects(&self) -> Vec<Self> {
