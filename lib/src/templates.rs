@@ -1,5 +1,5 @@
 //! An adapter for a template engine.
-//! This is implemented in case Texture Notes decides to support multiple template engine.
+//! This is implemented in case Lanoma decides to support multiple template engine.
 //!
 //! (On the other hand, this may be just a case of overengineering.)
 

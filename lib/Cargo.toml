@@ -1,5 +1,5 @@
 [package]
-name = "texture-notes-lib"
+name = "lanoma-lib"
 version = "2.0.0"
 authors = ["foo-dogsquared <foo.dogsquared@gmail.com>"]
 edition = "2018"

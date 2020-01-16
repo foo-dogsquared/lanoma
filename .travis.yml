@@ -7,7 +7,7 @@ rust:
 env:
   global:
     - RUST_BACKTRACE: full
-    - PROJECT_NAME: texture-notes
+    - PROJECT_NAME: lanoma
 cache: cargo
 
 # For now, it only support the operating systems I always get to use. 

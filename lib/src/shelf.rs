@@ -39,7 +39,7 @@ impl ExportOptions {
 }
 
 /// The shelf is where it contains the subjects and its notes.
-/// In other words, it is the base directory of the operations taken place in Texture Notes.
+/// In other words, it is the base directory of the operations taken place in Lanoma.
 #[derive(Debug, Clone)]
 pub struct Shelf {
     path: PathBuf,

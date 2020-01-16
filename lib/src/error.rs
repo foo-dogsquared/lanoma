@@ -8,7 +8,7 @@ use globwalk;
 use handlebars;
 use toml;
 
-/// An enum for errors possible to happen in the Texture Notes library.
+/// An enum for errors possible to happen in the Lanoma library.
 #[derive(Debug)]
 pub enum Error {
     /// Error when the value is invalid in a function.

@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr;
 
+use lanoma_lib::error::Error;
+use lanoma_lib::masternote::MasterNote;
+use lanoma_lib::note::Note;
+use lanoma_lib::HANDLEBARS_REG;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use texture_notes_lib::error::Error;
-use texture_notes_lib::masternote::MasterNote;
-use texture_notes_lib::note::Note;
-use texture_notes_lib::HANDLEBARS_REG;
 use toml;
 
 use crate::helpers;
@@ -97,18 +97,6 @@ impl CompilationEnvironment {
         compilation_env
     }
 
-    /// Set the subject of the notes to be compiled.
-    pub fn path<S>(
-        &mut self,
-        path: S,
-    ) -> &mut Self
-    where
-        S: AsRef<Path>,
-    {
-        self.path = path.as_ref().to_path_buf();
-        self
-    }
-
     /// Set the notes to be compiled.
     pub fn compilables(
         &mut self,
@@ -121,11 +109,14 @@ impl CompilationEnvironment {
     }
 
     /// Set the command.
-    pub fn command(
+    pub fn command<S>(
         &mut self,
-        command: String,
-    ) -> &mut Self {
-        self.command = command;
+        command: S,
+    ) -> &mut Self
+    where
+        S: AsRef<str>,
+    {
+        self.command = command.as_ref().to_string();
         self
     }
 

@@ -3,28 +3,28 @@ use std::fs;
 use std::process;
 
 use directories;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use structopt::StructOpt;
-use texture_notes_lib::config::SubjectConfig;
-use texture_notes_lib::error::Error;
-use texture_notes_lib::masternote::MasterNote;
-use texture_notes_lib::note::Note;
-use texture_notes_lib::profile::{
+use lanoma_lib::config::SubjectConfig;
+use lanoma_lib::error::Error;
+use lanoma_lib::masternote::MasterNote;
+use lanoma_lib::note::Note;
+use lanoma_lib::profile::{
     Profile, ProfileBuilder, PROFILE_MASTER_NOTE_TEMPLATE_NAME, PROFILE_NOTE_TEMPLATE_NAME,
 };
-use texture_notes_lib::shelf::{ExportOptions, Shelf, ShelfItem};
-use texture_notes_lib::subjects::Subject;
+use lanoma_lib::shelf::{ExportOptions, Shelf, ShelfItem};
+use lanoma_lib::subjects::Subject;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use structopt::StructOpt;
 
 // the modules from this crate
 mod args;
 mod compile;
 mod helpers;
 
-use crate::args::{Command, Input, TextureNotes};
+use crate::args::{Command, Input, Lanoma};
 use crate::compile::{Compilable, CompilationEnvironment};
 
 fn main() {
-    let args = TextureNotes::from_args();
+    let args = Lanoma::from_args();
 
     match parse_from_args(args) {
         Ok(()) => (),
@@ -39,7 +39,7 @@ fn main() {
                 Error::HandlebarsTemplateError(e) => println!("There's something wrong with the Handlebars template.\nERROR: {}", e), 
                 Error::HandlebarsTemplateFileError(e) => println!("There's something wrong with the Handlebars template.\nERROR: {}", e), 
                 Error::HandlebarsRenderError(e) => println!("An error has occurred while rendering the Handlebars template\nERROR: {}", e), 
-                Error::IoError(e) => println!("An IO error has occurred while Texture Notes is running.\nERROR: {}", e),
+                Error::IoError(e) => println!("An IO error has occurred while Lanoma is running.\nERROR: {}", e),
                 _ => println!("Unknown error."), 
             };
 
@@ -48,7 +48,7 @@ fn main() {
     };
 }
 
-fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
+fn parse_from_args(args: Lanoma) -> Result<(), Error> {
     let user_dirs = directories::BaseDirs::new().unwrap();
     let mut config_app_dir = user_dirs.config_dir().to_path_buf();
     config_app_dir.push(env!("CARGO_PKG_NAME"));
@@ -171,11 +171,11 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
             command,
         } => {
             let profile = Profile::from(&profile_path)?;
-            let command = command.unwrap_or(profile.compile_note_command());
 
             let compiled_notes_envs = match kind {
                 Input::Notes { subject, notes } => {
                     let subject = Subject::from_shelf(&subject, &shelf)?;
+                    let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
                     let notes = Note::from_vec_loose(&notes, &subject, &shelf);
                     let mut compilables: Vec<Box<dyn Compilable>> = vec![];
                     for note in notes {
@@ -186,7 +186,7 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                         CompilationEnvironment::new(subject.path_in_shelf(&shelf));
                     compiled_notes_env
                         .compilables(compilables)
-                        .command(command)
+                        .command(command.as_ref().unwrap_or(&subject_config.command))
                         .thread_count(thread_count as i16);
                     vec![compiled_notes_env]
                 }
@@ -207,7 +207,7 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                         }
 
                         let mut env = CompilationEnvironment::new(subject.path_in_shelf(&shelf));
-                        env.command(command.clone())
+                        env.command(command.as_ref().unwrap_or(&subject_config.command))
                             .compilables(compilables)
                             .thread_count(thread_count as i16);
 
@@ -248,7 +248,6 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
             command,
         } => {
             let profile = Profile::from(&profile_path)?;
-            let command = command.unwrap_or(profile.compile_note_command());
 
             let compiled_master_notes: Vec<MasterNote> = subjects
                 .into_par_iter()
@@ -265,9 +264,9 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                         master_note.push(&note);
                     }
 
-                    master_note
+                    (master_note, subject_config)
                 })
-                .filter(|master_note| {
+                .filter(|(master_note, _)| {
                     let master_note_object =
                         helpers::master_note_full_object(&profile, &shelf, &master_note);
                     let resulting_string = profile
@@ -284,16 +283,16 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                     helpers::write_file(master_note.path_in_shelf(&shelf), resulting_string, false)
                         .is_ok()
                 })
-                .filter(|master_note| {
+                .filter(|(master_note, config)| {
                     if !skip_compilation {
                         let original_dir = env::current_dir().map_err(Error::IoError).unwrap();
-                        let compilation_dst_file = master_note.path_in_shelf(&shelf);
-                        let compilation_dst = compilation_dst_file.parent().unwrap();
-                        let command = command.clone();
+                        let compilation_dst = master_note.subject().path_in_shelf(&shelf);
+
                         env::set_current_dir(&compilation_dst)
                             .map_err(Error::IoError)
                             .unwrap();
-                        let mut master_note_compilation_cmd = master_note.to_command(&command);
+                        let mut master_note_compilation_cmd =
+                            master_note.to_command(command.as_ref().unwrap_or(&config.command));
                         let output = master_note_compilation_cmd.output().unwrap();
                         env::set_current_dir(original_dir)
                             .map_err(Error::IoError)
@@ -304,9 +303,19 @@ fn parse_from_args(args: TextureNotes) -> Result<(), Error> {
                         false
                     }
                 })
-                .collect();
+                .map(|(master_note, _)| {
+                    println!(
+                        "\n{:?} has successfully compiled a master note\nwith the following filtered notes.",
+                        master_note.subject().full_name()
+                    );
 
-            println!("{:?}", compiled_master_notes.len());
+                    for note in master_note.notes() {
+                        println!("  - {:?}", note.title());
+                    }
+
+                    master_note
+                })
+                .collect();
         }
         _ => (),
     }
@@ -320,13 +329,8 @@ mod tests {
 
     #[test]
     pub fn basic_usage_test() {
-        let command_args_as_vec = vec![
-            "texture-notes-v2",
-            "--shelf",
-            "this/path/does/not/exist",
-            "init",
-        ];
-        let command_args = TextureNotes::from_iter(command_args_as_vec.iter());
+        let command_args_as_vec = vec!["lanoma", "--shelf", "this/path/does/not/exist", "init"];
+        let command_args = Lanoma::from_iter(command_args_as_vec.iter());
 
         assert_eq!(parse_from_args(command_args).is_err(), true);
     }

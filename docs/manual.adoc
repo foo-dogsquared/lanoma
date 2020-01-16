@@ -1,13 +1,14 @@
-= texture-notes(1)
+= lanoma(1)
 Gabriel Arazas
 2019-12-31
 :toc:
 :doctype: manpage
-:program: Texture Notes
+:program: Lanoma
 :manmanual: {program} Manual
-:mansource: {program} v2.0.0
+:mansource: {program} v0.1.0
 :man-linkstyle: pass:[red R < >]
 
+:binary-name: lanoma
 :default-template-name: _default
 :templates-folder: .templates
 :template-file-ext: hbs
@@ -21,14 +22,14 @@ Gabriel Arazas
 
 == Name 
 
-texture-notes - a note manager for LaTeX documents; inspired from Gilles Castel's LaTeX note management workflow post (https://castel.dev/post/lecture-notes-3/)
+{binary-name} - a basic note manager for LaTeX documents; inspired from Gilles Castel's LaTeX note management workflow post (https://castel.dev/post/lecture-notes-3/)
 
 
 
 
 == Sypnosis 
 
-*texture-notes* [_GLOBAL OPTIONS_] [_SUBCOMMAND_]... [_SUBCOMMAND OPTIONS_] [_SUBCOMMAND ARGUMENT(S)_]...
+*{binary-name}* [_GLOBAL OPTIONS_] [_SUBCOMMAND_]... [_SUBCOMMAND OPTIONS_] [_SUBCOMMAND ARGUMENT(S)_]...
 
 
 
@@ -74,12 +75,12 @@ Print the help section of the subcommand or the application.
 
 === Initializing and customizing a profile 
 
-To get started with Texture Notes, one will have to initialize a profile. 
+To get started with {program}, one will have to initialize a profile. 
 To initialize a profile, just run the `init` subcommand. 
 
 [source, shell]
 ----
-texture-notes init
+lanoma init
 ----
 
 This initializes a profile at the default config folder of the operating system. 
@@ -92,28 +93,28 @@ The TOML file should have the keys `name` and `version` along with the correct d
 Custom keys can be added which is useful when creating note templates which will be discussed later in the manual. 
 
 * A set of templates in `{templates-folder}` directory. 
-It is a key-value store with the name of the `.tex` files as the key. 
+It is a key-value store with the name of the `.{template-file-ext}` files as the key. 
 
 
-=== Using Texture Notes 
+=== Using {program} 
 
 Now a profile is available, you can now create some subjects and notes in a directory referred to as the *base directory* or the *shelf*. 
 
 You can view the available subcommands at the <<Subcommands>> section. 
 Most of the subcommands for interacting with the shelf requires an inner subcommand indicating whether it's a subject or a note. 
 
-Here are some of the examples when using Texture Notes. 
+Here are some of the examples when using {program}. 
 
 [source, shell]
 ----
-texture-notes add subjects "Calculus I" "Calculus II"
+lanoma add subjects "Calculus I" "Calculus II"
 
-texture-notes compile notes "Calculus I" -- "Introduction to limits" "Taylor series"
+lanoma compile notes "Calculus I" -- "Introduction to limits" "Taylor series"
 
-texture-notes remove subjects "Calculus II"
+lanoma remove subjects "Calculus II"
 ----
 
-A *subject* in Texture Note is just a folder with a metadata file named `{subject-metadata-file}`. 
+A *subject* in {program} is just a folder with a metadata file named `{subject-metadata-file}`. 
 
 For convenience, you can refer to the same subject as long as the resulting kebab-case string is the same. 
 
@@ -138,9 +139,9 @@ You can refer to the Calculus I from the first year folder in different ways ass
 
 [source, shell]
 ----
-texture-notes add notes "Year 1/Semester 1/Calculus I" -- NOTES...
-texture-notes add notes "year-1/semester-1/calculus-i" -- NOTES...
-texture-notes add notes "year-1/semester-1/Calculus I" -- NOTES...
+lanoma add notes "Year 1/Semester 1/Calculus I" -- NOTES...
+lanoma add notes "year-1/semester-1/calculus-i" -- NOTES...
+lanoma add notes "year-1/semester-1/Calculus I" -- NOTES...
 ----
 
 As long as the resulting kebab-case of each component in the path is the same with the folder, it is considered as the same subject in the filesystem. 
@@ -150,19 +151,19 @@ For certain cases, this can be distinct when creating notes or the subject.
 The same applies for referring to notes. 
 As long as the resulting kebab-case is the same, it refers to the same note in the filesystem. 
 
-That said, with this implementation, Texture Notes will not recognize notes (and subjects) in the filesystem that are not in valid kebab-case. 
+That said, with this implementation, {program} will not recognize notes (and subjects) in the filesystem that are not in valid kebab-case. 
 You can exploit this to make certain notes and subjects hidden simply by adding and renaming the file with an invalid kebab-case character (e.g., an underscore (`_`), an exclamation point (`!`), dot (`.`)). 
 
 
 === Note templates 
 
-Texture Notes has a simple templating system for your LaTeX documents. 
+{program} has a simple templating system for your LaTeX documents. 
 As briefly mentioned, the templates are located in a profile specifically in the `{templates-folder}` folder. 
 
 Internally, the templates is represented as a key-value store. 
 The key-value store comes from the folder that expects a list of `.{template-file-ext}` files with the file name as the key. 
 
-Texture Notes use https://crates.io/crates/handlebars[a Rust implementation of Handlebars] as the templating language. 
+{program} use https://crates.io/crates/handlebars[a Rust implementation of Handlebars] as the templating language. 
 It is definitely important to make sure the templates is valid. 
 
 The template store primarily use the `{default-template-name}` template as the default key. 
@@ -185,13 +186,12 @@ Sample content.
 ----
 
 To override the default template, just create `{default-template-name}.{template-file-ext}` on the templates folder. 
-The Handlebars configuration within the Texture Notes also comes with a few helper functions for convenience. 
+The Handlebars configuration within the {program} also comes with a few helper functions for convenience. 
 Check out the <<Templating>> section in the appendix for more details. 
 
-As previously said, Texture Notes uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
-To set dynamic values, a Handlebars expression delimited by two pairs of curly braces (`{{$EXPR}}`). 
-Practically in using Texture Notes, these are often used to refer to a https://github.com/toml-lang/toml[TOML] value. 
+As previously said, {program} uses a templating engine specifically https://crates.io/crates/handlebars/3.0.0-beta.5[a Rust implementation] of https://handlebarsjs.com/[Handlebars]. 
 
+Practically in templating with Handlebars and {program}, these are often used to refer to a https://github.com/toml-lang/toml[TOML] value. 
 When creating a note, a TOML table is forming from different sources such as the profile and subject metadata. 
 
 For example, let's create a note titled "Introduction to limits" under the subject "Calculus I". 
@@ -199,7 +199,7 @@ Assuming the shelf is the current directory, the shell command would look like t
 
 [source, shell]
 ----
-texture-notes add notes "Calculus I" -- "Introduction to limits"
+lanoma add notes "Calculus I" -- "Introduction to limits"
 ----
 
 The following TOML table is then formed in the note creation process. 
@@ -236,13 +236,13 @@ It is accessible under the `subject` table.
 
 === LaTeX documents compilation 
 
-Texture Notes can do basic automation of compiling LaTeX documents in parallel through threads. 
+{program} can do basic automation of compiling LaTeX documents in parallel through threads. 
 
 This is mainly used with the `compile` subcommand. 
 
 [source, shell]
 ----
-texture-notes compile notes "Calculus I" -- "Introduction to limits"
+lanoma compile notes "Calculus I" -- "Introduction to limits"
 ----
 
 You can change the number of threads compiling the documents with the `--thread-count` option. 
@@ -264,7 +264,7 @@ Even if there is a `_files` key, the command line option will override the note 
 
 === Master notes 
 
-Texture Notes also allows to create *master notes*. 
+{program} also allows to create *master notes*. 
 
 A master note is a note combined from the filtered notes of a subject. 
 It is associated with one and only one subject. 
@@ -274,7 +274,7 @@ To generate a master note, run the *master* subcommand.
 
 [source, shell]
 ----
-texture-notes master "Calculus I"
+lanoma master "Calculus I"
 ----
 
 By default, the master note template is `{master-default-template}`. 
@@ -323,10 +323,10 @@ General errors — e.g., invalid or nonexistent profile, TOML or Handlebars pars
 == Repository 
 
 Git repository::
-https://github.com/foo-dogsquared/texture-notes-v2
+https://github.com/foo-dogsquared/lanoma
 
 Issue tracker::
-https://github.com/foo-dogsquared/texture-notes-v2/issues
+https://github.com/foo-dogsquared/lanoma/issues
 
 
 
@@ -334,7 +334,7 @@ https://github.com/foo-dogsquared/texture-notes-v2/issues
 [appendix]
 == Config reference 
 
-A reference of the keys Texture Notes officially recognizes. 
+A reference of the keys {program} officially recognizes. 
 
 *`{profile-metadata-file}`*:: 
 
@@ -364,7 +364,7 @@ If this key is absent in the file, it uses `latexmk -pdf {{note}}`.
 [appendix]
 == Built-in object data 
 
-Most component (i.e., subjects, notes) in Texture Notes has a resulting object data associated with it. 
+Most component (i.e., subjects, notes) in {program} has a resulting object data associated with it. 
 This is mostly used for creating notes (and master notes). 
 
 
@@ -473,11 +473,11 @@ The resulting TOML when creating the master note is similar to the resulting TOM
 
 By default, the profile location uses the config folder of the operating system. 
 
-* For Linux, the config folder is at `$XDG_CONFIG_HOME/texture-notes` or at `$HOME/.config/texture-notes`. 
-* For Windows, the configuration is stored at `%APPDATA%/texture-notes`. 
-* For MacOS, it is at `$HOME/Library/Preferences/texture-notes`. 
+* For Linux, the config folder is at `$XDG_CONFIG_HOME/lanoma` or at `$HOME/.config/lanoma`. 
+* For Windows, the configuration is stored at `%APPDATA%/lanoma`. 
+* For MacOS, it is at `$HOME/Library/Preferences/lanoma`. 
 
-Specifically, Texture Notes utilizes the https://crates.io/crates/directories[`directories` crate from crates.io]. 
+Specifically, {program} utilizes the https://crates.io/crates/directories[`directories` crate from crates.io]. 
 You can refer to the crates.io page for more details. 
 
 

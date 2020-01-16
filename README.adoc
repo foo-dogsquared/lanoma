@@ -1,7 +1,7 @@
-= Texture Notes 
+= Lanoma 
 :toc:
 
-A lecture notes manager that aims for self-studying and university classes footnote:[Mainly, the author of this program, https://github.com/foo-dogsquared[@foo-dogsquared].]. 
+A basic LaTeX notes manager that aims for self-studying and university classes footnote:[Mainly, the author of this program, https://github.com/foo-dogsquared[@foo-dogsquared].]. 
 It is mainly composed of a command line program where you can easily manage your LaTeX notes. 
 
 For now, the notes manager is specifically created for my specific workflow so no there's not much room for general use-cases. 
@@ -70,7 +70,7 @@ I've also met people online that are more content with a simple list of director
 
 == Installation 
 
-You can simply download the https://github.com/foo-dogsquared/texture-notes-v2/releases[provided binaries in the releases page]. 
+You can simply download the https://github.com/foo-dogsquared/lanoma/releases[provided binaries in the releases page]. 
 If you're using https://doc.rust-lang.org/cargo/[Cargo], you can install the binary with https://doc.rust-lang.org/cargo/commands/cargo-install.html?highlight=install#cargo-install[`cargo install` command]. 
 
 If there's no available version for your operating system of choice, you can compile one yourself. 
@@ -79,7 +79,7 @@ First, make sure you have the Rust toolchain (>=`v1.39.0` just to be safe) and t
 Then clone the Git repository into your machine and build the executable with `cargo build --release`. 
 footnote:[You can also build with `make` by using the `build` rule (i.e., `make build`).]
 
-Wait for the compilation and get the binary (named as `texture-notes`) in the `target/release/` folder. 
+Wait for the compilation and get the binary (named as `lanoma`) in the `target/release/` folder. 
 You can then move the binary in your `$PATH`. 
 
 
@@ -98,18 +98,18 @@ That's pretty much it.
 
 === Quick start 
 
-To get started with Texture Notes, you need a profile. 
+To get started with Lanoma, you need a profile. 
 
 You can simply create a profile with the `init` command. 
 
 [source, shell]
 ----
 # Initialize the profile in the respective config folder of your operating system 
-texture-notes-v2 init
+lanoma init
 
 # Initialize the profile in other directories if you don't want to. 
 # Though, you have to specify the profile at every command. 
-texture-notes-v2 init --profile "~/Documents"
+lanoma init --profile "~/Documents"
 ----
 
 Once you have initialized a profile, you can now create subjects and notes. 
@@ -118,17 +118,17 @@ Though in order to add notes, you need to create subjects/folders first.
 [source, shell]
 ----
 # Add some subjects 
-texture-notes-v2 add subjects "Mathematics" "Science"
+lanoma add subjects "Mathematics" "Science"
 
 # After adding some subjects, you can add some notes 
-texture-notes-v2 add notes "Mathematics" "Introduction to Calculus" 
+lanoma add notes "Mathematics" "Introduction to Calculus" 
 
 # To compile all notes under "Mathematics" 
-texture-notes-v2 compile subjects "Mathematics"
+lanoma compile subjects "Mathematics"
 ----
 
 You can check out more options in the link:docs/manual.adoc[manual]. 
-It also gives the complete details of what you need to know with Texture Notes. 
+It also gives the complete details of what you need to know with Lanoma. 
 
 
 
@@ -168,7 +168,7 @@ The project uses https://github.com/rust-lang/cargo[Cargo] for managing the proj
 * To run the binary of the project, execute `cargo run` in the shell. 
 To add command line arguments, just append two dashes (`--`) after the run command. 
 
-* To run the tests of the library crate, call `cargo test --package texture-notes-lib --lib`. 
+* To run the tests of the library crate, call `cargo test --package lanoma-lib --lib`. 
 
 * Using the https://github.com/rust-lang/rls[RLS] plugin of your text editor of choice is recommended. 
 If you're using https://code.visualstudio.com/[Visual Studio Code], it is fully recommended to have it installed. 

@@ -12,7 +12,7 @@ clean:
 	cargo clean
 
 create-docs:
-	asciidoctor -b manpage -o texture-notes.1 docs/manual.adoc
+	asciidoctor -b manpage -o lanoma.1 docs/manual.adoc
 
 format:
 	cargo fmt

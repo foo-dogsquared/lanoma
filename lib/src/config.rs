@@ -87,9 +87,6 @@ pub struct ProfileConfig {
     #[serde(default = "default_version")]
     version: String,
 
-    #[serde(default)]
-    subject: SubjectConfig,
-
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }
@@ -97,7 +94,6 @@ pub struct ProfileConfig {
 impl Default for ProfileConfig {
     fn default() -> Self {
         Self {
-            subject: SubjectConfig::default(),
             name: default_name(),
             version: default_version(),
             extra: HashMap::new(),
