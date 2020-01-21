@@ -193,32 +193,6 @@ pub fn naively_normalize_path<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
     }
 }
 
-/// A generic function for writing a shelf item (as a file).
-pub fn write_file<P, S>(
-    path: P,
-    string: S,
-    strict: bool,
-) -> Result<(), Error>
-where
-    P: AsRef<Path>,
-    S: AsRef<str>,
-{
-    let path = path.as_ref();
-    let mut file_open_options = OpenOptions::new();
-    file_open_options.write(true).create(true);
-
-    if strict {
-        file_open_options.create_new(true);
-    } else {
-        file_open_options.truncate(true);
-    }
-
-    let mut file = file_open_options.open(path).map_err(Error::IoError)?;
-    file.write(string.as_ref().as_bytes())
-        .map_err(Error::IoError)?;
-    Ok(())
-}
-
 fn is_parent_dir(component: Component) -> bool {
     match component {
         Component::ParentDir => true,

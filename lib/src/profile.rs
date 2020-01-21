@@ -152,9 +152,12 @@ impl Profile {
 
         let mut profile = Self::new();
 
-        profile.path = fs::canonicalize(path).map_err(Error::IoError)?;
+        profile.path = match fs::canonicalize(path.clone()) {
+            Ok(v) => v,
+            Err(_e) => return Err(Error::InvalidProfileError(path)),
+        };
         if !profile.has_templates() {
-            return Err(Error::InvalidProfileError(profile.path.clone()));
+            return Err(Error::InvalidProfileError(profile.path));
         }
 
         profile.init_templates()?;
