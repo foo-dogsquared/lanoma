@@ -1,6 +1,8 @@
 = Lanoma 
 :toc:
 
+:program: Lanoma
+
 A basic LaTeX notes manager that aims for self-studying and university classes footnote:[Mainly, the author of this program, https://github.com/foo-dogsquared[@foo-dogsquared].]. 
 It is mainly composed of a command line program where you can easily manage your LaTeX notes. 
 
@@ -30,24 +32,20 @@ Nonetheless, pull requests for improvements are always welcome!
 
 
 
-== Limitations
+== Limitations and non-goals 
 
-Now the design rationale is out, let's explicitly lay out the expected limitations of this program. 
+Now the design rationale is out, let's explicitly lay out the expected limitations and non-goals from the time of creating this project. 
 
 * First and foremost, it's a niche tool for a **very** niche use. 
 Also, with the use of makefiles and shell scripts, you can easily set up a similar (or better) workflow for your LaTeX documents. 
 Besides, creating a similar tool could've been easier (and better) with shell scripts and makefiles. 
 I just did to myself because I want to learn Rust. 
+{program} does have some level of customizability but it is limited. 
 
-* There's not much room for customizability. 
-It is based from my specific workflow, after all. 
-It is ought to happen. 
-Maybe in the future, I'll improve to be used in general cases but I doubt it will improve the program. 
+* This is not made for general use cases. 
+Though, it is considered especially with the upcoming improvements of the underlying libraries (like creating dynamic helpers with Rhai [from https://github.com/sunng87/handlebars-rust/issues/301]). 
 
 * This is not made for organizing the notes or anything. 
-
-* It uses LaTeX. ;) 
-footnote:[I would like to create a generic personal knowledge base for Asciidoctor documents or even better, a configurable personal knowledge base similar to https://gohugo.io/content-management/archetypes/[Hugo archetypes] and https://gohugo.io/content-management/formats/#additional-formats-through-external-helpers[the external helpers system].] 
 
 If you're looking for an alternative for your personal knowledge base, a simple directory tree of notes will do. 
 I've also made my personal knowledge base with just a folder of https://asciidoctor.org/[Asciidoctor] documents and created a Python script for compiling them all. 
@@ -98,7 +96,7 @@ That's pretty much it.
 
 === Quick start 
 
-To get started with Lanoma, you need a profile. 
+To get started with {program}, you need a profile. 
 
 You can simply create a profile with the `init` command. 
 
@@ -128,7 +126,7 @@ lanoma compile subjects "Mathematics"
 ----
 
 You can check out more options in the link:docs/manual.adoc[manual]. 
-It also gives the complete details of what you need to know with Lanoma. 
+It also gives the complete details of what you need to know with {program}. 
 
 
 
