@@ -83,7 +83,7 @@ impl ProfileBuilder {
     }
 
     /// Consumes the builder to create the profile instance.
-    pub fn build(self) -> Profile {
+    pub fn build<'a>(self) -> Profile<'a> {
         let mut profile = Profile::new();
 
         if self.path.is_some() {
@@ -112,19 +112,19 @@ impl ProfileBuilder {
 }
 
 /// A profile holds certain metadata such as the templates.
-pub struct Profile {
+pub struct Profile<'a> {
     path: PathBuf,
     config: ProfileConfig,
-    templates: templates::TemplateHandlebarsRegistry,
+    templates: templates::TemplateHandlebarsRegistry<'a>,
 }
 
-impl Object for Profile {
+impl<'a> Object for Profile<'a> {
     fn data(&self) -> toml::Value {
         toml::Value::try_from(self.config()).unwrap()
     }
 }
 
-impl Default for Profile {
+impl<'a> Default for Profile<'a> {
     fn default() -> Self {
         let mut profile = Self::new();
         profile.init_templates().unwrap();
@@ -133,7 +133,7 @@ impl Default for Profile {
     }
 }
 
-impl Profile {
+impl<'a> Profile<'a> {
     /// Creates a profile instance with empty data.
     pub fn new() -> Self {
         Self {
@@ -165,7 +165,10 @@ impl Profile {
         // This also overrides the default templates if found any.
         let templates =
             TemplateGetter::get_templates(profile.templates_path(), TEMPLATE_FILE_EXTENSION)?;
-        profile.templates.register_vec(&templates)?;
+        match profile.templates.register_vec(&templates) {
+            Err(errors) => return Err(errors),
+            _ => (),
+        };
 
         profile.config = ProfileConfig::try_from(profile.metadata_path())?;
 
@@ -320,7 +323,7 @@ mod tests {
     use tempfile;
     use toml;
 
-    fn tmp_profile() -> Result<(tempfile::TempDir, Profile), Error> {
+    fn tmp_profile<'a>() -> Result<(tempfile::TempDir, Profile<'a>), Error> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
         let mut profile_builder = ProfileBuilder::new();
         profile_builder.path(tmp_dir.path());

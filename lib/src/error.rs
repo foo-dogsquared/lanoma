@@ -49,6 +49,9 @@ pub enum Error {
 
     /// Given when the glob pattern is not recognizable.
     GlobParsingError(globwalk::GlobError),
+
+    /// A collection of error used for more efficient error reporting.
+    Errors(Vec<Error>),
 }
 
 impl error::Error for Error {}
@@ -86,16 +89,17 @@ impl fmt::Display for Error {
             Error::MissingDataError(ref p) => write!(f, "{} is missing.", p),
             Error::TomlValueError(ref p) => write!(f, "{} is invalid.", p),
             Error::TomlSerializeError(ref p) => write!(f, "{}", p),
-            Error::HandlebarsTemplateError(ref p) => write!(f, "{} is an invalid template.", p),
-            Error::HandlebarsTemplateFileError(ref p) => write!(
-                f,
-                "Handlebars with the instance '{}' has an error occurred.",
-                p
-            ),
-            Error::HandlebarsRenderError(ref p) => {
-                write!(f, "{}: Error occurred while rendering.", p)
-            }
+            Error::HandlebarsTemplateError(ref p) => write!(f, "{}", p),
+            Error::HandlebarsTemplateFileError(ref p) => write!(f, "{}", p),
+            Error::HandlebarsRenderError(ref p) => write!(f, "{}", p),
             Error::GlobParsingError(ref error) => error.fmt(f),
+            Error::Errors(ref errors) => {
+                for error in errors {
+                    writeln!(f, "{}", error)?;
+                }
+
+                Ok(())
+            }
         }
     }
 }

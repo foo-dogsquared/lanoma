@@ -23,27 +23,17 @@ mod helpers;
 use crate::args::{Command, Input, Lanoma};
 use crate::compile::{Compilable, CompilationEnvironment};
 
+static EXIT_STATUS: i32 = 1;
+
 fn main() {
     let args = Lanoma::from_args();
 
     match parse_from_args(args) {
         Ok(()) => (),
         Err(e) => {
-            match e {
-                Error::InvalidProfileError(path) => println!("Profile at {:?} is not valid or nonexistent.\nMake sure to export it successfully.", path),
-                Error::InvalidSubjectError(path) => println!("Subject at {:?} is not valid or nonexistent.", path),
-                Error::ProfileAlreadyExists(path) => println!("Profile at {:?} already exists.", path), 
-                Error::ProcessError(exit) => println!("The child process has exit with status code {}", exit.code().unwrap()),
-                Error::UnexportedShelfError(path) => println!("The shelf at {:?} is not exported.", path),
-                Error::TomlValueError(e) => println!("A TOML parsing error occurred.\nERROR: {}", e), 
-                Error::HandlebarsTemplateError(e) => println!("There's something wrong with the Handlebars template.\nERROR: {}", e), 
-                Error::HandlebarsTemplateFileError(e) => println!("There's something wrong with the Handlebars template.\nERROR: {}", e), 
-                Error::HandlebarsRenderError(e) => println!("An error has occurred while rendering the Handlebars template\nERROR: {}", e), 
-                Error::IoError(e) => println!("An IO error has occurred while Lanoma is running.\nERROR: {}", e),
-                _ => println!("Unknown error."), 
-            };
+            eprintln!("{}", e);
 
-            process::exit(1)
+            process::exit(EXIT_STATUS)
         }
     };
 }
@@ -130,7 +120,7 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                         .collect();
 
                     if created_subjects.len() <= 0 {
-                        println!("No subjects has been created.");
+                        eprintln!("No subjects has been created.");
                     } else {
                         println!(
                         "Here are the subjects that have been successfully created in the shelf."
@@ -170,7 +160,8 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
             files,
             command,
         } => {
-            let profile = Profile::from(&profile_path)?;
+            let _profile = Profile::from(&profile_path)?;
+            let shelf_path = shelf.path();
 
             let compiled_notes_envs = match kind {
                 Input::Notes { subject, notes } => {
@@ -199,7 +190,6 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                             subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
                         let file_filter = files.as_ref().unwrap_or(&subject_config.files);
 
-                        println!("{:?}", &subject_config);
                         let notes = subject.get_notes_in_fs(&file_filter, &shelf)?;
                         let mut compilables: Vec<Box<dyn Compilable>> = vec![];
                         for note in notes {
@@ -218,27 +208,31 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                 }
             };
 
-            compiled_notes_envs.into_par_iter()
-            .map(|comp_env| {
-                let path = comp_env.path.clone();
-                let compiled_notes = match comp_env.compile() {
-                    Ok(v) => v,
-                    Err(_e) => return,
-                };
-
-                if compiled_notes.len() == 0 {
-                    println!("No notes successfully ran the compile command under the path {:?}.", path) ;
-                    println!("Please check for the command if it's valid or the note exists in the filesystem.");
-                } else {
+            compiled_notes_envs
+                .into_iter()
+                .filter(|comp_env| !comp_env.compilables.is_empty())
+                .map(|comp_env| comp_env.compile())
+                .filter_map(|compile_result| compile_result.ok())
+                .for_each(|compile_result| {
                     println!(
-                        "Here are the compiled note that successfully run the compile command in path {:?}:", path
+                        "\n----\nAt {:?}:\n----\n",
+                        helpers::relative_path_from(&compile_result.path, &shelf_path)
+                            .unwrap_or(compile_result.path)
                     );
-                    for compiled_note in compiled_notes {
-                        println!("  - {}", compiled_note.name());
+                    if !compile_result.compiled.is_empty() {
+                        println!("Notes that succeeded to compile:");
+                        for compiled in compile_result.compiled {
+                            println!("  - {}", compiled);
+                        }
                     }
-                }
-            })
-            .collect::<()>();
+
+                    if !compile_result.failed.is_empty() {
+                        println!("Notes that failed to compile:");
+                        for failed in compile_result.failed {
+                            println!("  - {}", failed);
+                        }
+                    }
+                })
         }
         Command::Master {
             subjects,
@@ -251,24 +245,15 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
 
             let compiled_master_notes: Vec<MasterNote> = subjects
                 .into_par_iter()
-                .map(|subject| Subject::from_shelf(&subject, &shelf))
-                .filter(|subject| subject.is_ok())
-                .map(|subject| {
-                    let subject = subject.unwrap();
-                    let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
-                    let files = files.as_ref().unwrap_or(&subject_config.files);
-
-                    let notes = subject.get_notes_in_fs(&files, &shelf).unwrap();
-                    let mut master_note = MasterNote::new(subject.clone());
-                    for note in notes.iter() {
-                        master_note.push(&note);
+                .filter_map(|subject| helpers::create_master_note_from_subject_str(&subject, &shelf).ok())
+                .filter(|master_note| {
+                    if master_note.notes().is_empty() {
+                        return false;
                     }
 
-                    (master_note, subject_config)
-                })
-                .filter(|(master_note, _)| {
                     let master_note_object =
                         helpers::master_note_full_object(&profile, &shelf, &master_note);
+                    // Calling the unwrap function here since once a Handlebars template has an erro, it will most likely have an error for the rest of the notes.
                     let resulting_string = profile
                         .template_registry()
                         .render(
@@ -283,10 +268,11 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                     helpers::write_file(master_note.path_in_shelf(&shelf), resulting_string, false)
                         .is_ok()
                 })
-                .filter(|(master_note, config)| {
+                .filter(|master_note| {
                     if !skip_compilation {
                         let original_dir = env::current_dir().map_err(Error::IoError).unwrap();
                         let compilation_dst = master_note.subject().path_in_shelf(&shelf);
+                        let config = master_note.subject().get_config(&shelf).unwrap_or(SubjectConfig::new());
 
                         env::set_current_dir(&compilation_dst)
                             .map_err(Error::IoError)
@@ -303,7 +289,7 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                         false
                     }
                 })
-                .map(|(master_note, _)| {
+                .map(|master_note| {
                     println!(
                         "\n{:?} has successfully compiled a master note\nwith the following filtered notes.",
                         master_note.subject().full_name()

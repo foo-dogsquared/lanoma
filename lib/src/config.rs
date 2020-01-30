@@ -10,7 +10,7 @@ use crate::consts;
 use crate::error::Error;
 
 const DEFAULT_FILES: &str = "*.tex";
-const DEFAULT_CMD: &str = "pdflatex {{note}}";
+const DEFAULT_CMD: &str = "latexmk -pdf {{note}}";
 const DEFAULT_NAME: &str = "New Student";
 
 /// The configuration of a subject.

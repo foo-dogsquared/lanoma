@@ -11,7 +11,6 @@ use crate::subjects::Subject;
 use crate::Object;
 use crate::Result;
 
-#[macro_use]
 use crate::modify_toml_table;
 
 const MASTER_NOTE_FILE: &str = "_master.tex";

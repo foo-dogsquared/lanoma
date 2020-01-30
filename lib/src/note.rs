@@ -13,7 +13,6 @@ use crate::shelf::{Shelf, ShelfData, ShelfItem};
 use crate::subjects::Subject;
 use crate::{Object, Result};
 
-#[macro_use]
 use crate::modify_toml_table;
 
 /// The individual LaTeX documents in a notes instance.

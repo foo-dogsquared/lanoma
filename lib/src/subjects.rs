@@ -16,7 +16,6 @@ use crate::note::Note;
 use crate::shelf::{Shelf, ShelfData, ShelfItem};
 use crate::{Object, Result};
 
-#[macro_use]
 use crate::{modify_toml_table, upsert_toml_table};
 
 const SUBJECT_METADATA_FILE: &str = "info.toml";

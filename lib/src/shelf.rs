@@ -7,7 +7,6 @@ use crate::helpers;
 use crate::Object;
 use crate::Result;
 
-#[macro_use]
 use crate::modify_toml_table;
 
 /// A struct holding the common export options.

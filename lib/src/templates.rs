@@ -13,7 +13,6 @@ use serde;
 
 use crate::error::Error;
 use crate::helpers;
-use crate::Result;
 
 /// A trait for the template registry.
 /// It handles all of the template operations such as checking if the there is already a template
@@ -23,12 +22,12 @@ pub trait TemplateRegistry {
     fn register(
         &mut self,
         template: &Template,
-    ) -> Result<()>;
+    ) -> Result<(), Error>;
 
     fn unregister<S>(
         &mut self,
         template_name: S,
-    ) -> Result<()>
+    ) -> Result<(), Error>
     where
         S: AsRef<str>;
 
@@ -46,22 +45,23 @@ pub trait TemplateRegistry {
         &self,
         name: S,
         value: V,
-    ) -> Result<String>
+    ) -> Result<String, Error>
     where
         S: AsRef<str>,
         V: serde::Serialize;
 }
 
 /// The template registry implemented with the `rust-handlebars` crate.
-pub struct TemplateHandlebarsRegistry(handlebars::Handlebars);
+#[derive(Debug)]
+pub struct TemplateHandlebarsRegistry<'a>(handlebars::Handlebars<'a>);
 
-impl TemplateRegistry for TemplateHandlebarsRegistry {
+impl<'a> TemplateRegistry for TemplateHandlebarsRegistry<'a> {
     /// Registers a template in the registry.
     /// If there is a template with the same name, it will be overwritten.
     fn register(
         &mut self,
         template: &Template,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         self.0
             .register_template_string(&template.name, &template.s)
             .map_err(Error::HandlebarsTemplateError)
@@ -70,7 +70,7 @@ impl TemplateRegistry for TemplateHandlebarsRegistry {
     fn unregister<S>(
         &mut self,
         template_name: S,
-    ) -> Result<()>
+    ) -> Result<(), Error>
     where
         S: AsRef<str>,
     {
@@ -93,7 +93,7 @@ impl TemplateRegistry for TemplateHandlebarsRegistry {
         &self,
         template_name: S,
         value: V,
-    ) -> Result<String>
+    ) -> Result<String, Error>
     where
         S: AsRef<str>,
         V: serde::Serialize,
@@ -104,21 +104,21 @@ impl TemplateRegistry for TemplateHandlebarsRegistry {
     }
 }
 
-impl Deref for TemplateHandlebarsRegistry {
-    type Target = handlebars::Handlebars;
+impl<'a> Deref for TemplateHandlebarsRegistry<'a> {
+    type Target = handlebars::Handlebars<'a>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl AsMut<handlebars::Handlebars> for TemplateHandlebarsRegistry {
-    fn as_mut(&mut self) -> &mut handlebars::Handlebars {
+impl<'a> AsMut<handlebars::Handlebars<'a>> for TemplateHandlebarsRegistry<'a> {
+    fn as_mut(&mut self) -> &mut handlebars::Handlebars<'a> {
         &mut self.0
     }
 }
 
-impl TemplateHandlebarsRegistry {
+impl<'a> TemplateHandlebarsRegistry<'a> {
     /// Creates a new instance of the registry.
     pub fn new() -> Self {
         let mut renderer = handlebars::Handlebars::new();
@@ -134,22 +134,28 @@ impl TemplateHandlebarsRegistry {
 
     /// Register a vector of template.
     /// This does not check if the template registration is successful.
-    pub fn register_vec<'a>(
+    pub fn register_vec<'b>(
         &mut self,
-        templates: &'a Vec<Template>,
-    ) -> Result<Vec<&'a Template>> {
+        templates: &'b Vec<Template>,
+    ) -> Result<Vec<&'b Template>, Error> {
         let mut registered_templates = vec![];
+        let mut template_errors = vec![];
         for template in templates.iter() {
-            if self
+
+            match self
                 .0
                 .register_template_string(&template.name, &template.s)
-                .is_ok()
+                .map_err(Error::HandlebarsTemplateError)
             {
-                registered_templates.push(template);
+                Ok(_v) => registered_templates.push(template), 
+                Err(e) => template_errors.push(e),
             }
         }
 
-        Ok(registered_templates)
+        match template_errors.is_empty() {
+            true => Ok(registered_templates),
+            false => Err(template_errors).map_err(Error::Errors),
+        }
     }
 
     /// Register the template with the specified name.
@@ -158,7 +164,7 @@ impl TemplateHandlebarsRegistry {
         &mut self,
         name: N,
         s: S,
-    ) -> Result<()>
+    ) -> Result<(), Error>
     where
         N: AsRef<str>,
         S: AsRef<str>,
@@ -170,6 +176,7 @@ impl TemplateHandlebarsRegistry {
 }
 
 /// A generic struct for templates to be used in a template engine.
+#[derive(Debug)]
 pub struct Template {
     name: String,
     s: String,
@@ -186,7 +193,7 @@ impl Template {
     pub fn from_path<P, S>(
         path: P,
         name: S,
-    ) -> Result<Self>
+    ) -> Result<Self, Error>
     where
         P: AsRef<Path>,
         S: AsRef<str>,
@@ -211,7 +218,7 @@ impl TemplateGetter {
     pub fn get_templates<P, S>(
         path: P,
         file_ext: S,
-    ) -> Result<Vec<Template>>
+    ) -> Result<Vec<Template>, Error>
     where
         P: AsRef<Path>,
         S: AsRef<str>,
@@ -250,7 +257,7 @@ mod tests {
     use tempfile;
 
     #[test]
-    pub fn search_for_tex_files() -> Result<()> {
+    pub fn search_for_tex_files() -> Result<(), Error> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
         for file in &["a.tex", "b.txt", "c.tex", "d.tex"] {
             let mut file_handle =
