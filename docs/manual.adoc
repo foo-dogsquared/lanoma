@@ -22,7 +22,7 @@ Gabriel Arazas
 
 == Name 
 
-{binary-name} - a basic note manager for LaTeX documents; inspired from Gilles Castel's LaTeX note management workflow post (https://castel.dev/post/lecture-notes-3/)
+{binary-name} - a glorified basic note manager for LaTeX documents that could've been easily created with shell scripts; inspired from Gilles Castel's LaTeX note management workflow post (https://castel.dev/post/lecture-notes-3/)
 
 
 
@@ -54,6 +54,7 @@ Initialize a profile.
 
 *add*::
 Add a subject or a note. 
+footnote:[If you're creating notes, I recommend to use https://github.com/foo-dogsquared/hantemcli[hantemcli] which is another project of mine to easily render Handlebars templates in the command line. It could also create templates with data formats other than TOML.]
 
 *remove*::
 Remove a subject or a note. 
