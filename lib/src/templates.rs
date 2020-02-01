@@ -141,13 +141,12 @@ impl<'a> TemplateHandlebarsRegistry<'a> {
         let mut registered_templates = vec![];
         let mut template_errors = vec![];
         for template in templates.iter() {
-
             match self
                 .0
                 .register_template_string(&template.name, &template.s)
                 .map_err(Error::HandlebarsTemplateError)
             {
-                Ok(_v) => registered_templates.push(template), 
+                Ok(_v) => registered_templates.push(template),
                 Err(e) => template_errors.push(e),
             }
         }

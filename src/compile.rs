@@ -128,8 +128,6 @@ pub struct CompilationEnvironment {
     thread_count: i16,
 }
 
-
-
 impl Default for CompilationEnvironment {
     fn default() -> Self {
         Self {
