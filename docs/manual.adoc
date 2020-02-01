@@ -294,7 +294,7 @@ For future references, the default master template has the following content.
 % Frontmatter of the class note
 
 {{#each master.notes}}
-Note: {{this.name}} {{this.path_in_shelf}}
+Note: {{this.title}}
 {{/each }}
 
 \end{document}
