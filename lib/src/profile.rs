@@ -1,4 +1,4 @@
-//! A profile is an object that holds all of the required information for the operations in Texture Notes.
+//! A profile is an object that holds all of the required information for the operations in Lanoma.
 //! For now, a profile contains the metadata and the templates.
 //!
 //! On the filesystem, it is represented as a folder with specific files and folders.
@@ -83,7 +83,7 @@ impl ProfileBuilder {
     }
 
     /// Consumes the builder to create the profile instance.
-    pub fn build(self) -> Profile {
+    pub fn build<'a>(self) -> Profile<'a> {
         let mut profile = Profile::new();
 
         if self.path.is_some() {
@@ -112,19 +112,19 @@ impl ProfileBuilder {
 }
 
 /// A profile holds certain metadata such as the templates.
-pub struct Profile {
+pub struct Profile<'a> {
     path: PathBuf,
     config: ProfileConfig,
-    templates: templates::TemplateHandlebarsRegistry,
+    templates: templates::TemplateHandlebarsRegistry<'a>,
 }
 
-impl Object for Profile {
+impl<'a> Object for Profile<'a> {
     fn data(&self) -> toml::Value {
         toml::Value::try_from(self.config()).unwrap()
     }
 }
 
-impl Default for Profile {
+impl<'a> Default for Profile<'a> {
     fn default() -> Self {
         let mut profile = Self::new();
         profile.init_templates().unwrap();
@@ -133,7 +133,7 @@ impl Default for Profile {
     }
 }
 
-impl Profile {
+impl<'a> Profile<'a> {
     /// Creates a profile instance with empty data.
     pub fn new() -> Self {
         Self {
@@ -152,9 +152,12 @@ impl Profile {
 
         let mut profile = Self::new();
 
-        profile.path = fs::canonicalize(path).map_err(Error::IoError)?;
+        profile.path = match fs::canonicalize(path.clone()) {
+            Ok(v) => v,
+            Err(_e) => return Err(Error::InvalidProfileError(path)),
+        };
         if !profile.has_templates() {
-            return Err(Error::InvalidProfileError(profile.path.clone()));
+            return Err(Error::InvalidProfileError(profile.path));
         }
 
         profile.init_templates()?;
@@ -162,7 +165,10 @@ impl Profile {
         // This also overrides the default templates if found any.
         let templates =
             TemplateGetter::get_templates(profile.templates_path(), TEMPLATE_FILE_EXTENSION)?;
-        profile.templates.register_vec(&templates)?;
+        match profile.templates.register_vec(&templates) {
+            Err(errors) => return Err(errors),
+            _ => (),
+        };
 
         profile.config = ProfileConfig::try_from(profile.metadata_path())?;
 
@@ -305,27 +311,11 @@ impl Profile {
 
         Ok(())
     }
-
-    /// Returns the command for compiling the notes.
-    /// By default, the compilation command is `latexmk -pdf`.
-    ///
-    /// If there's no valid value found from the key (i.e., invalid type), it will return the default command.
-    pub fn compile_note_command(&self) -> String {
-        let PROFILE_DEFAULT_COMMAND = String::from("latexmk -pdf {{note}}");
-        match self.config.extra.get("command").as_ref() {
-            Some(value) => match value.is_str() {
-                true => value.as_str().unwrap().to_string(),
-                false => PROFILE_DEFAULT_COMMAND,
-            },
-            None => PROFILE_DEFAULT_COMMAND,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helpers;
     use crate::note::Note;
     use crate::shelf::{Shelf, ShelfItem};
     use crate::subjects::Subject;
@@ -333,7 +323,7 @@ mod tests {
     use tempfile;
     use toml;
 
-    fn tmp_profile() -> Result<(tempfile::TempDir, Profile), Error> {
+    fn tmp_profile<'a>() -> Result<(tempfile::TempDir, Profile<'a>), Error> {
         let tmp_dir = tempfile::TempDir::new().map_err(Error::IoError)?;
         let mut profile_builder = ProfileBuilder::new();
         profile_builder.path(tmp_dir.path());

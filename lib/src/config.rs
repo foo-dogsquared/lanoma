@@ -10,7 +10,7 @@ use crate::consts;
 use crate::error::Error;
 
 const DEFAULT_FILES: &str = "*.tex";
-const DEFAULT_CMD: &str = "pdflatex {{note}}";
+const DEFAULT_CMD: &str = "latexmk -pdf {{note}}";
 const DEFAULT_NAME: &str = "New Student";
 
 /// The configuration of a subject.
@@ -87,9 +87,6 @@ pub struct ProfileConfig {
     #[serde(default = "default_version")]
     version: String,
 
-    #[serde(default)]
-    subject: SubjectConfig,
-
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
 }
@@ -97,7 +94,6 @@ pub struct ProfileConfig {
 impl Default for ProfileConfig {
     fn default() -> Self {
         Self {
-            subject: SubjectConfig::default(),
             name: default_name(),
             version: default_version(),
             extra: HashMap::new(),

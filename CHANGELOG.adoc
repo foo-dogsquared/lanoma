@@ -38,6 +38,9 @@ It is created with an https://asciidoctor.org/[Asciidoctor] document.
 
 * Rewrite the application with the https://www.rust-lang.org/[Rust] language. 
 
+* Changed the application name to Lanoma. 
+It just there to make it easier to remember (and type). 
+
 * Restructure the application with its own library crate. 
 Making it possible to create other binaries with the same application logic. 
 
@@ -52,7 +55,10 @@ From this point, the binder is now referred to as the **shelf** or the **base di
 ** A shelf is still composed of **subjects** (terminology may change in the future). 
 Each subject can have a specific metadata file. 
 ** Remove the database entirely. 
-Now, the binder system is entirely dependent of the filesystem. 
+Now, the shelf system is entirely dependent of the filesystem. 
+It is merely a path prefix for the subjects now. 
+
+* Subjects can now be referred to similarly to paths. 
 
 * Revise the profile system. 
 ** The common files folder has been removed. 
@@ -65,10 +71,11 @@ This allows for more flexibility and intuition in interacting with the program.
 
 * Templates support from https://docs.python.org/3/library/string.html#custom-string-formatting[Python template strings] to https://github.com/sunng87/handlebars-rust[Handlebars Rust implementation]. 
 ** The templates are also `.hbs` files in the templates folder. 
+** It also comes with a set of helper functions similar to https://gohugo.io/templates/introduction/[Hugo templates]. 
 
 * Restructure the profile directory structure for neater custom configurations and easier organization. 
 ** The default profile location is stored with the respective config folder of the OS. 
-This allows Texture Notes to be simpler and modular. 
+This allows Lanoma to be simpler and modular. 
 Although, this sacrifices the multiple user aspect (though that's not needed at this point). 
 ** The profile metadata filename has been changed to `.profile.toml`. 
 ** Templates has been moved to its own folder at `.templates/`. 

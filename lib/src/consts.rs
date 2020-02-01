@@ -12,7 +12,7 @@ pub const MASTER_NOTE_TEMPLATE: &'static str = r"\documentclass[class=memoir, cr
 % Frontmatter of the class note
 
 {{#each master.notes}}
-Note: {{this.name}} {{this.path_in_shelf}}
+Note: {{this.title}}
 {{/each }}
 
 \end{document}

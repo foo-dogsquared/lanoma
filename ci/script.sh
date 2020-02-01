@@ -9,8 +9,8 @@ package_executable() {
     mkdir -p "$staging"
     mkdir -p "$staging/docs"
     cp {README.adoc,LICENSE} "$staging"
-    cp {docs/manual.adoc,CHANGELOG.adoc,texture-notes.1} "$staging/docs"
-    cp "target/$TARGET/release/texture-notes" "$staging"
+    cp {docs/manual.adoc,CHANGELOG.adoc,lanoma.1} "$staging/docs"
+    cp "target/$TARGET/release/lanoma" "$staging"
 
     # This directory is where the binaries will be stored.
     local out_dir="$(pwd)/deployment"

@@ -26,7 +26,7 @@ pub type Result<T> = result::Result<T, Error>;
 // Making it static since it does not handle any templates anyway and only here for rendering the string.
 lazy_static! {
     /// A static Handlebars registry.
-    pub static ref HANDLEBARS_REG: handlebars::Handlebars = handlebars::Handlebars::new();
+    pub static ref HANDLEBARS_REG: handlebars::Handlebars<'static> = handlebars::Handlebars::new();
 }
 
 /// A trait that specifies an object has a set of associated data.

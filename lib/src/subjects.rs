@@ -16,7 +16,6 @@ use crate::note::Note;
 use crate::shelf::{Shelf, ShelfData, ShelfItem};
 use crate::{Object, Result};
 
-#[macro_use]
 use crate::{modify_toml_table, upsert_toml_table};
 
 const SUBJECT_METADATA_FILE: &str = "info.toml";
@@ -127,7 +126,7 @@ impl Subject {
     /// # Example
     ///
     /// ```
-    /// use texture_notes_lib::subjects::Subject;
+    /// use lanoma_lib::subjects::Subject;
     ///
     /// assert_eq!(Subject::new("Mathematics").name(), Subject::new("Mathematics/Calculus/..").name())
     /// ```
@@ -290,7 +289,7 @@ impl Subject {
     /// # Example
     ///
     /// ```
-    /// use texture_notes_lib::subjects::Subject;
+    /// use lanoma_lib::subjects::Subject;
     ///
     /// let subject = Subject::new("Bachelor I/Semester I/Calculus");
     ///

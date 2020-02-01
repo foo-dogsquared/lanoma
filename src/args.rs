@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "Texture Notes", about = "Manage your LaTeX study notes.")]
-pub struct TextureNotes {
+#[structopt(name = "Lanoma", about = "Manage your LaTeX study notes.")]
+pub struct Lanoma {
     #[structopt(
         short,
         long,

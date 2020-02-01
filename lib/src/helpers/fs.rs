@@ -193,32 +193,6 @@ pub fn naively_normalize_path<P: AsRef<Path>>(path: P) -> Option<PathBuf> {
     }
 }
 
-/// A generic function for writing a shelf item (as a file).
-pub fn write_file<P, S>(
-    path: P,
-    string: S,
-    strict: bool,
-) -> Result<(), Error>
-where
-    P: AsRef<Path>,
-    S: AsRef<str>,
-{
-    let path = path.as_ref();
-    let mut file_open_options = OpenOptions::new();
-    file_open_options.write(true).create(true);
-
-    if strict {
-        file_open_options.create_new(true);
-    } else {
-        file_open_options.truncate(true);
-    }
-
-    let mut file = file_open_options.open(path).map_err(Error::IoError)?;
-    file.write(string.as_ref().as_bytes())
-        .map_err(Error::IoError)?;
-    Ok(())
-}
-
 fn is_parent_dir(component: Component) -> bool {
     match component {
         Component::ParentDir => true,
@@ -233,24 +207,24 @@ mod tests {
 
     #[test]
     fn relpath_to_common_relpaths() {
-        let base = PathBuf::from("./tests/texture-notes-profile/notes/calculus");
-        let dst = PathBuf::from("./tests/texture-notes-profile/common");
+        let base = PathBuf::from("./tests/lanoma-profile/notes/calculus");
+        let dst = PathBuf::from("./tests/lanoma-profile/common");
 
         assert_eq!(relative_path_from(dst, base), Some("../../common".into()));
     }
 
     #[test]
     fn relpath_to_leading_common_relpaths() {
-        let base = PathBuf::from("./tests/texture-notes-profile/common");
-        let dst = PathBuf::from("./tests/texture-notes-profile/common/calculus");
+        let base = PathBuf::from("./tests/lanoma-profile/common");
+        let dst = PathBuf::from("./tests/lanoma-profile/common/calculus");
 
         assert_eq!(relative_path_from(dst, base), Some("calculus".into()));
     }
 
     #[test]
     fn relpath_to_the_same_input() {
-        let base = PathBuf::from("./tests/texture-notes-profile/common");
-        let dst = PathBuf::from("./tests/texture-notes-profile/common");
+        let base = PathBuf::from("./tests/lanoma-profile/common");
+        let dst = PathBuf::from("./tests/lanoma-profile/common");
 
         assert_eq!(relative_path_from(dst, base), Some("".into()));
     }
@@ -291,7 +265,7 @@ mod tests {
     #[test]
     fn relpath_from_root_to_current_dir() {
         let base = PathBuf::from("/dev/sda/calculus-drive");
-        let dst = PathBuf::from("./tests/texture-notes-profile/common");
+        let dst = PathBuf::from("./tests/lanoma-profile/common");
 
         assert_eq!(relative_path_from(dst, base), None);
     }
@@ -309,11 +283,11 @@ mod tests {
     #[test]
     fn relpath_to_common_root() {
         let base = PathBuf::from("C:\\dev\\sda\\calculus-drive");
-        let dst = PathBuf::from("C:\\tests\\texture-notes-profile\\common");
+        let dst = PathBuf::from("C:\\tests\\lanoma-profile\\common");
 
         assert_eq!(
             relative_path_from(dst.clone(), base),
-            Some("../../../tests/texture-notes-profile/common".into())
+            Some("../../../tests/lanoma-profile/common".into())
         );
     }
 
@@ -321,21 +295,21 @@ mod tests {
     #[test]
     fn relpath_to_common_root() {
         let base = PathBuf::from("/dev/sda/calculus-drive");
-        let dst = PathBuf::from("/tests/texture-notes-profile/common");
+        let dst = PathBuf::from("/tests/lanoma-profile/common");
 
         assert_eq!(
             relative_path_from(dst, base),
-            Some("../../../tests/texture-notes-profile/common".into())
+            Some("../../../tests/lanoma-profile/common".into())
         );
     }
 
     #[test]
     fn leading_current_dir_naive_normalized() {
-        let test_case = PathBuf::from("./tests/texture-notes-profile/notes/calculus");
+        let test_case = PathBuf::from("./tests/lanoma-profile/notes/calculus");
 
         assert_eq!(
             naively_normalize_path(test_case),
-            Some("tests/texture-notes-profile/notes/calculus".into())
+            Some("tests/lanoma-profile/notes/calculus".into())
         );
     }
 
