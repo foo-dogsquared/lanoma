@@ -20,8 +20,8 @@ use crate::templates::{self, TemplateGetter};
 use crate::Object;
 
 // profile constants
-pub const PROFILE_METADATA_FILENAME: &str = ".profile.toml";
-pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = ".templates";
+pub const PROFILE_METADATA_FILENAME: &str = "profile.toml";
+pub const PROFILE_TEMPLATE_FILES_DIR_NAME: &str = "templates";
 
 pub const TEMPLATE_FILE_EXTENSION: &str = "hbs";
 pub const PROFILE_NOTE_TEMPLATE_NAME: &str = "_default";

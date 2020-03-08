@@ -108,9 +108,16 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                         }
                     }
 
-                    println!("Here are the notes under the subject {:?} that successfully created in the shelf.", subject.name());
-                    for note in created_notes {
-                        println!("  - {:?}", note.title());
+                    if created_notes.is_empty() {
+                        println!(
+                            "No notes was created under the subject {:?}.",
+                            subject.name()
+                        );
+                    } else {
+                        println!("Here are the notes under the subject {:?} that successfully created in the shelf.", subject.name());
+                        for note in created_notes {
+                            println!("  - {:?}", note.title());
+                        }
                     }
                 }
                 Input::Subjects { subjects } => {
@@ -139,7 +146,13 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                     .filter(|subject| subject.delete(&shelf).is_ok())
                     .collect();
 
-                println!("{:?}", deleted_subjects);
+                if deleted_subjects.is_empty() {
+                    println!("No deleted subjects.");
+                } else {
+                    for subject in deleted_subjects {
+                        println!("Subject {:?} has been deleted.", subject);
+                    }
+                }
             }
             Input::Notes { subject, notes } => {
                 let subject = Subject::from_shelf(&subject, &shelf)?;
@@ -148,9 +161,13 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                     .filter(|note| note.delete((&subject, &shelf)).is_ok())
                     .collect();
 
-                println!("The following notes has been deleted successfully:");
-                for note in deleted_notes.iter() {
-                    println!(" - {}", note.title());
+                if deleted_notes.is_empty() {
+                    println!("No notes under the subject {:?} has been deleted.", subject);
+                } else {
+                    println!("The following notes has been deleted successfully:");
+                    for note in deleted_notes.iter() {
+                        println!(" - {}", note.title());
+                    }
                 }
             }
         },
@@ -215,10 +232,11 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                 .filter_map(|compile_result| compile_result.ok())
                 .for_each(|compile_result| {
                     println!(
-                        "\n----\nAt {:?}:\n----\n",
+                        "\n\n----\nAt {:?}:\n----\n",
                         helpers::relative_path_from(&compile_result.path, &shelf_path)
                             .unwrap_or(compile_result.path)
                     );
+
                     if !compile_result.compiled.is_empty() {
                         println!("Notes that succeeded to compile:");
                         for compiled in compile_result.compiled {
@@ -245,7 +263,9 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
 
             let compiled_master_notes: Vec<MasterNote> = subjects
                 .into_par_iter()
-                .filter_map(|subject| helpers::create_master_note_from_subject_str(&subject, &shelf).ok())
+                .filter_map(|subject| {
+                    helpers::create_master_note_from_subject_str(&subject, &shelf, &files).ok()
+                })
                 .filter(|master_note| {
                     if master_note.notes().is_empty() {
                         return false;
@@ -272,7 +292,10 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                     if !skip_compilation {
                         let original_dir = env::current_dir().map_err(Error::IoError).unwrap();
                         let compilation_dst = master_note.subject().path_in_shelf(&shelf);
-                        let config = master_note.subject().get_config(&shelf).unwrap_or(SubjectConfig::new());
+                        let config = master_note
+                            .subject()
+                            .get_config(&shelf)
+                            .unwrap_or(SubjectConfig::new());
 
                         env::set_current_dir(&compilation_dst)
                             .map_err(Error::IoError)
@@ -289,19 +312,18 @@ fn parse_from_args(args: Lanoma) -> Result<(), Error> {
                         false
                     }
                 })
-                .map(|master_note| {
-                    println!(
+                .collect();
+
+            for master_note in compiled_master_notes {
+                println!(
                         "\n{:?} has successfully compiled a master note\nwith the following filtered notes.",
                         master_note.subject().full_name()
                     );
 
-                    for note in master_note.notes() {
-                        println!("  - {:?}", note.title());
-                    }
-
-                    master_note
-                })
-                .collect();
+                for note in master_note.notes() {
+                    println!("  - {:?}", note.title());
+                }
+            }
         }
         _ => (),
     }

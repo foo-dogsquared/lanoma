@@ -1,13 +1,22 @@
 = Changelog
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. 
 
-The format is based on https://keepachangelog.com/en/1.0.0/[Keep a Changelog],
-and this project adheres to https://semver.org/spec/v2.0.0.html[Semantic Versioning].
+The format is based on https://keepachangelog.com/en/1.0.0/[Keep a Changelog], 
+and this project adheres to https://semver.org/spec/v2.0.0.html[Semantic Versioning]. 
+
+NOTE: The starting new version is based from the semantic versioning and https://doc.rust-lang.org/cargo/reference/manifest.html[the Cargo manifest `version` section]. 
+I think it is more appropriate to make it with a blank version now that Lanoma has completely changed at this point. 
+It will also cause less headache when complying with the versioning policies that most Rust packages uses. 
+
 
 
 
 == Unreleased 
 
+
+
+
+== v0.1.0 
 
 === Added 
 
@@ -37,6 +46,8 @@ It is created with an https://asciidoctor.org/[Asciidoctor] document.
 === Changed 
 
 * Rewrite the application with the https://www.rust-lang.org/[Rust] language. 
+
+* Improve the output feedback from the command line. 
 
 * Changed the application name to Lanoma. 
 It just there to make it easier to remember (and type). 

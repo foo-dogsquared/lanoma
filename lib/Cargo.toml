@@ -1,6 +1,6 @@
 [package]
 name = "lanoma-lib"
-version = "2.0.0"
+version = "0.1.0"
 authors = ["foo-dogsquared <foo.dogsquared@gmail.com>"]
 edition = "2018"
 cargo-features = ["named-profiles"]

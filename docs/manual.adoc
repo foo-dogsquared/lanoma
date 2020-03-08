@@ -10,9 +10,9 @@ Gabriel Arazas
 
 :binary-name: lanoma
 :default-template-name: _default
-:templates-folder: .templates
+:templates-folder: templates
 :template-file-ext: hbs
-:profile-metadata-file: .profile.toml
+:profile-metadata-file: profile.toml
 :subject-metadata-file: info.toml
 :master-note-file: _master.tex
 :master-default-template: master/_default
@@ -115,7 +115,8 @@ lanoma compile notes "Calculus I" -- "Introduction to limits" "Taylor series"
 lanoma remove subjects "Calculus II"
 ----
 
-A *subject* in {program} is just a folder with a metadata file named `{subject-metadata-file}`. 
+A *subject* in {program} is just a folder. 
+It can have a metadata file named `{subject-metadata-file}` to create custom data. 
 
 For convenience, you can refer to the same subject as long as the resulting kebab-case string is the same. 
 
@@ -249,9 +250,10 @@ lanoma compile notes "Calculus I" -- "Introduction to limits"
 You can change the number of threads compiling the documents with the `--thread-count` option. 
 The default compilation process spawns four threads. 
 
-You can also change the default
+You can also change the default command with your own either on the command line or in the subject metadata. 
 The default compilation command is `'latexmk -pdf {{note}}'`. 
-You can override the default command by setting the `command` key in the `{profile-metadata-file}`. 
+You can override the default command by setting the `command` key in the `{subject-metadata-file}`. 
+
 Similar to note templates, the command template uses Handlebars. 
 The available fields for substituing is `note` which is the basically the resulting file name (e.g., "Introduction to calculus" to "introduction-to-calculus.tex"). 
 
@@ -259,6 +261,7 @@ You can also compile certain files either by:
 
 * Setting with the command line option `--files` which accepts similar array of strings. 
 The command line option has the highest precedence. 
+
 * Setting a key in `{subject-metadata-file}` named *_files* which is an array of strings (file globs). 
 Even if there is a `_files` key, the command line option will override the note filter. 
 

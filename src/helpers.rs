@@ -65,10 +65,14 @@ pub fn note_full_object(
 pub fn create_master_note_from_subject_str(
     subject: &str,
     shelf: &Shelf,
+    file_globs: &Option<Vec<String>>,
 ) -> Result<MasterNote, Error> {
     let subject = Subject::from_shelf(subject, &shelf)?;
     let subject_config = subject.get_config(&shelf).unwrap_or(SubjectConfig::new());
-    let notes = subject.get_notes_in_fs(&subject_config.files, &shelf)?;
+    let notes = subject.get_notes_in_fs(
+        { file_globs.as_ref().unwrap_or(&subject_config.files) },
+        &shelf,
+    )?;
 
     // Creating the master note instance and initializing the values.
     let mut master_note = MasterNote::new(subject);
