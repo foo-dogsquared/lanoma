@@ -1,6 +1,4 @@
-use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::Write;
-use std::os;
+use std::fs::{DirBuilder};
 use std::path::{self, Component, Path, PathBuf};
 
 use crate::error::Error;
@@ -19,74 +17,6 @@ pub fn create_folder<P: AsRef<Path>>(
         Err(reason) => return Err(Error::IoError(reason)),
         _ => Ok(()),
     }
-}
-
-/// Move folder from the specified locations.
-/// When a safety string is provided, the destination folder will be renamed first before moving the source folder.
-/// The name of the already existing destination will be appended with the safety string.
-pub fn move_folder<T: AsRef<Path>, U: AsRef<Path>>(
-    from: T,
-    to: U,
-    safety_string: Option<&str>,
-) -> Result<(), Error> {
-    let from = from.as_ref();
-    let to = to.as_ref();
-
-    if to.is_dir() && safety_string.is_some() {
-        if let Some(safety_string) = safety_string {
-            let mut replacement_path: PathBuf = to.clone().to_path_buf();
-            replacement_path.push(&format!("-{}", safety_string));
-
-            fs::rename(&from, &replacement_path).map_err(Error::IoError)?;
-        }
-    }
-
-    match fs::rename(&from, &to) {
-        Ok(_v) => Ok(()),
-        Err(err) => Err(Error::IoError(err)),
-    }
-}
-
-pub fn read_file_or_default<'str, T: AsRef<Path>, U: AsRef<&'str str>>(
-    path: T,
-    default_value: U,
-) -> String {
-    let path = path.as_ref();
-    let default_value = default_value.as_ref();
-
-    match fs::read_to_string(path) {
-        Ok(string) => string,
-        Err(_err) => default_value.to_string(),
-    }
-}
-
-#[cfg(target_family = "unix")]
-/// Create a symlink pointing from the source.
-pub fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(
-    src: P,
-    dst: Q,
-) -> Result<(), Error> {
-    let src = src.as_ref();
-    let dst = dst.as_ref();
-
-    os::unix::fs::symlink(src, dst).map_err(Error::IoError)
-}
-
-#[cfg(target_family = "windows")]
-/// Create a symlink pointing from the source.
-pub fn create_symlink<P: AsRef<Path>, Q: AsRef<Path>>(
-    src: P,
-    dst: Q,
-) -> Result<(), Error> {
-    let from = src.as_ref();
-    let to = dst.as_ref();
-
-    let result = match from.is_dir() {
-        true => os::windows::fs::symlink_dir(from, to),
-        false => os::windows::fs::symlink_file(from, to),
-    };
-
-    result.map_err(Error::IoError)
 }
 
 /// Get the relative path from two paths similar to Python `os.path.relpath`.

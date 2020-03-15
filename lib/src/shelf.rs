@@ -86,26 +86,6 @@ impl Shelf {
         self.path.clone()
     }
 
-    /// Sets the path of the shelf.
-    /// Returns the old path.
-    ///
-    /// If the shelf is exported, it will also move the folder in the filesystem.
-    pub fn set_path<P: AsRef<Path>>(
-        &mut self,
-        to: P,
-    ) -> Result<PathBuf> {
-        let old_path = self.path();
-        let new_path = to.as_ref().to_path_buf();
-
-        if self.is_valid() {
-            fs::rename(&old_path, &new_path).map_err(Error::IoError)?;
-        }
-
-        self.path = new_path;
-
-        Ok(old_path)
-    }
-
     /// Checks if the shelf is valid.
     pub fn is_valid(&self) -> bool {
         self.path.is_dir()
@@ -131,18 +111,36 @@ pub trait ShelfItem<S> {
         &self,
         params: S,
     ) -> PathBuf;
-    fn is_path_exists(
+    fn is_item_valid(
         &self,
         params: S,
     ) -> bool;
+
     fn export(
         &self,
         params: S,
     ) -> Result<()>;
+
+    /// Deletes the associated folder in the shelf filesystem.
     fn delete(
         &self,
         params: S,
-    ) -> Result<()>;
+    ) -> Result<()> {
+        let path = self.path_in_shelf(params);
+
+        match path.is_dir() {
+            true => fs::remove_dir_all(path).map_err(Error::IoError),
+            false => fs::remove_file(path).map_err(Error::IoError),
+        }
+    }
+
+    /// Get the metadata of the shelf item from the filesystem.
+    fn metadata(
+        &self,
+        params: S,
+    ) -> Result<fs::Metadata> {
+        fs::metadata(self.path_in_shelf(params)).map_err(Error::IoError)
+    }
 }
 
 /// A trait implementing the object with the additional shelf-related data.
@@ -226,10 +224,10 @@ mod tests {
         assert!(shelf.export().is_ok());
 
         let test_subject: Subject = Subject::new("Mathematics");
-        assert_eq!(test_subject.is_path_exists(&shelf), false);
+        assert_eq!(test_subject.is_item_valid(&shelf), false);
 
         test_subject.export(&shelf)?;
-        assert_eq!(test_subject.is_path_exists(&shelf), true);
+        assert_eq!(test_subject.is_item_valid(&shelf), true);
         Ok(())
     }
 

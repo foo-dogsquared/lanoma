@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
+use std::fs::OpenOptions;
 
 use toml;
 
@@ -8,8 +8,7 @@ use crate::error::Error;
 use crate::note::Note;
 use crate::shelf::{Shelf, ShelfData, ShelfItem};
 use crate::subjects::Subject;
-use crate::Object;
-use crate::Result;
+use crate::{Object, Result};
 
 use crate::modify_toml_table;
 
@@ -70,7 +69,7 @@ impl ShelfItem<&Shelf> for MasterNote {
         path
     }
 
-    fn is_path_exists(
+    fn is_item_valid(
         &self,
         shelf: &Shelf,
     ) -> bool {
@@ -88,14 +87,6 @@ impl ShelfItem<&Shelf> for MasterNote {
             .map_err(Error::IoError)?;
 
         Ok(())
-    }
-
-    fn delete(
-        &self,
-        shelf: &Shelf,
-    ) -> Result<()> {
-        let master_note_path = self.path_in_shelf(&shelf);
-        fs::remove_file(master_note_path).map_err(Error::IoError)
     }
 }
 

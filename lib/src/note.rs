@@ -1,15 +1,13 @@
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
-use std::io;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 
-use chrono::{self};
 use heck::KebabCase;
 use serde::{Deserialize, Serialize};
 use toml;
 
-use crate::error::Error;
 use crate::shelf::{Shelf, ShelfData, ShelfItem};
+use crate::error::Error;
 use crate::subjects::Subject;
 use crate::{Object, Result};
 
@@ -49,24 +47,13 @@ impl ShelfItem<(&Subject, &Shelf)> for Note {
         path
     }
 
-    fn is_path_exists(
+    fn is_item_valid(
         &self,
         params: (&Subject, &Shelf),
     ) -> bool {
         self.path_in_shelf(params).is_file()
     }
 
-    /// Simply deletes the file in the shelf filesystem.
-    fn delete(
-        &self,
-        params: (&Subject, &Shelf),
-    ) -> Result<()> {
-        let path = self.path_in_shelf(params);
-
-        fs::remove_file(path).map_err(Error::IoError)
-    }
-
-    /// Simply create a new note in the filesystem.
     fn export(
         &self,
         params: (&Subject, &Shelf),
@@ -132,7 +119,7 @@ impl Note {
         let title = title.as_ref();
         let note = Note::new(title.to_string());
 
-        match note.is_path_exists((&subject, &shelf)) {
+        match note.is_item_valid((&subject, &shelf)) {
             true => Some(note),
             false => None,
         }
@@ -167,24 +154,6 @@ impl Note {
     /// Returns the title of the note instance.
     pub fn title(&self) -> String {
         self.title.clone()
-    }
-
-    /// Returns the modification datetime of the note file in the shelf filesystem as a `chrono::DateTime` instance.
-    pub fn datetime_modified(
-        &self,
-        subject: &Subject,
-        shelf: &Shelf,
-    ) -> Result<chrono::DateTime<chrono::Utc>> {
-        match self.is_path_exists((&subject, &shelf)) {
-            true => {
-                let metadata =
-                    fs::metadata(self.path_in_shelf((&subject, &shelf))).map_err(Error::IoError)?;
-                let modification_time = metadata.modified().map_err(Error::IoError)?;
-
-                Ok(chrono::DateTime::<chrono::Utc>::from(modification_time))
-            }
-            false => Err(Error::IoError(io::Error::from(io::ErrorKind::NotFound))),
-        }
     }
 
     /// Returns the path of the note relative to the subject.

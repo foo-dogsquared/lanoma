@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fs::{self, DirBuilder};
-use std::io;
+use std::fs::DirBuilder;
 use std::path::{self, PathBuf};
 
-use chrono::{self};
 use heck::KebabCase;
 use serde::{Deserialize, Serialize};
 use toml;
@@ -83,14 +81,13 @@ impl ShelfItem<&Shelf> for Subject {
     }
 
     /// Checks if the associated path exists from the shelf.
-    fn is_path_exists(
+    fn is_item_valid(
         &self,
         shelf: &Shelf,
     ) -> bool {
         self.path_in_shelf(&shelf).is_dir()
     }
 
-    /// Exports the instance in the filesystem.
     fn export(
         &self,
         shelf: &Shelf,
@@ -102,20 +99,11 @@ impl ShelfItem<&Shelf> for Subject {
         let path = self.path_in_shelf(&shelf);
         let dir_builder = DirBuilder::new();
 
-        if !self.is_path_exists(&shelf) {
+        if !self.is_item_valid(&shelf) {
             helpers::fs::create_folder(&dir_builder, &path)?;
         }
 
         Ok(())
-    }
-
-    /// Deletes the associated folder in the shelf filesystem.
-    fn delete(
-        &self,
-        shelf: &Shelf,
-    ) -> Result<()> {
-        let path = self.path_in_shelf(&shelf);
-        fs::remove_dir_all(path).map_err(Error::IoError)
     }
 }
 
@@ -155,7 +143,7 @@ impl Subject {
         shelf: &Shelf,
     ) -> Result<Self> {
         let subject = Subject::new(name);
-        if !subject.is_path_exists(&shelf) {
+        if !subject.is_item_valid(&shelf) {
             return Err(Error::InvalidSubjectError(subject.path_in_shelf(&shelf)));
         }
 
@@ -228,24 +216,6 @@ impl Subject {
     /// Returns the last subject component as a subject instance.
     pub fn stem(&self) -> Self {
         Self::new(self.name())
-    }
-
-    /// Returns the modification datetime of the folder as a `chrono::DateTime` instance.
-    pub fn datetime_modified(
-        &self,
-        shelf: &Shelf,
-    ) -> Result<chrono::DateTime<chrono::Utc>> {
-        match self.is_path_exists(&shelf) {
-            true => {
-                let metadata = fs::metadata(self.path_in_shelf(&shelf)).map_err(Error::IoError)?;
-                let modification_systemtime = metadata.modified().map_err(Error::IoError)?;
-
-                Ok(chrono::DateTime::<chrono::Utc>::from(
-                    modification_systemtime,
-                ))
-            }
-            false => Err(Error::IoError(io::Error::from(io::ErrorKind::Other))),
-        }
     }
 
     /// Returns the associated metadata file path with the given shelf.

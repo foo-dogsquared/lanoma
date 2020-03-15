@@ -363,7 +363,12 @@ mod tests {
 
         let exported_subjects: Vec<Subject> = test_subjects
             .into_iter()
-            .filter(|subject| subject.export(&shelf).is_ok())
+            .filter(|subject| {
+                let e = subject.export(&shelf);
+
+                println!("{:?}", e);
+                e
+            }.is_ok())
             .collect();
         assert_eq!(exported_subjects.len(), 3);
 
